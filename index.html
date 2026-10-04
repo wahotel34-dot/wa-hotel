@@ -695,7 +695,14 @@
                   });
 
                   if (!alreadyExists) {
-                    let emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+                    let emptyRow = null;
+                    if (res.catKey) {
+                      emptyRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
+                    }
+                    if (!emptyRow) {
+                      emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+                    }
+
                     if (emptyRow) {
                       emptyRow.querySelector('.room-no').value = res.roomNo || '';
                       emptyRow.querySelector('.guest-name').value = res.guestName || '';
