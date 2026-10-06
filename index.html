@@ -94,4 +94,57 @@
       projectId: "wa-hotel-384c0",
       storageBucket: "wa-hotel-384c0.firebasestorage.app",
       messagingSenderId: "994582437050",
-      appId: "
+      appId: "1:994582437050:web:123456789abcdef"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // 오늘 날짜 기본 세팅
+    document.addEventListener("DOMContentLoaded", () => {
+      const today = new Date().toISOString().split("T")[0];
+      const dateInput = document.getElementById("log-date");
+      if (dateInput && !dateInput.value) {
+        dateInput.value = today;
+      }
+      loadDailyData();
+
+      dateInput.addEventListener("change", () => {
+        loadDailyData();
+      });
+    });
+
+    // 데이터 불러오기 함수 (날짜별 로드)
+    async function loadDailyData() {
+      const dateVal = document.getElementById("log-date").value;
+      if (!dateVal) return;
+
+      try {
+        const docRef = doc(db, "hotel_logs", dateVal);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          // 데이터 적용 로직 구현부
+          console.log("데이터 로드 성공:", data);
+        } else {
+          console.log("해당 날짜 데이터 없음 - 빈 화면 유지");
+        }
+      } catch (e) {
+        console.error("데이터 로드 중 오류 발생:", e);
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="header-container">
+    <div class="title">WA HOTEL 예약 관리 일지 (클라우드 연동형)</div>
+    <div class="status">🟢 클라우드 모드</div>
+  </div>
+  
+  <div class="controls">
+    <label for="log-date">일지 날짜:</label>
+    <input type="date" id="log-date">
+  </div>
+</body>
+</html>
