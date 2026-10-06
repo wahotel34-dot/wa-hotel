@@ -442,16 +442,16 @@
 
           if (workTime === inTime) {
             if (stayDaysInput) stayDaysInput.value = diffDays > 1 ? diffDays : '';
-            if (roomTypeInput) roomTypeInput.value = '';
-            row.classList.remove('restay-row');
+            if (roomTypeInput && roomTypeInput.value !== '재숙') roomTypeInput.value = '';
+            if (roomTypeInput.value !== '재숙') row.classList.remove('restay-row');
           } else if (workTime > inTime && workTime < outTime) {
             if (stayDaysInput) stayDaysInput.value = '';
             if (roomTypeInput) roomTypeInput.value = '재숙';
             row.classList.add('restay-row');
           } else {
             if (stayDaysInput) stayDaysInput.value = '';
-            if (roomTypeInput) roomTypeInput.value = '';
-            row.classList.remove('restay-row');
+            if (roomTypeInput && roomTypeInput.value !== '재숙') roomTypeInput.value = '';
+            if (roomTypeInput.value !== '재숙') row.classList.remove('restay-row');
           }
         }
       });
@@ -564,8 +564,6 @@
         const guestNameVal = row.querySelector('.guest-name')?.value.trim();
         if (!guestNameVal) return;
 
-        if (row.dataset.autoSynced === "true") return;
-
         currentStay.push({
           catKey: row.getAttribute('data-cat-key') || '',
           roomNo: row.querySelector('.room-no')?.value || '',
@@ -580,7 +578,8 @@
           bank: row.querySelector('.bank')?.value || '',
           site: row.querySelector('.site')?.value || '',
           note: row.querySelector('.note')?.value || '',
-          car: row.querySelector('.car')?.value || ''
+          car: row.querySelector('.car')?.value || '',
+          autoSynced: row.dataset.autoSynced === "true" ? "true" : "false"
         });
       });
 
@@ -635,6 +634,7 @@
       const workTime = getMidnightTime(targetDate);
 
       try {
+        // 1. 해당 날짜에 직접 저장된 데이터 불러오기
         const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -660,6 +660,12 @@
                 targetRow.querySelector('.site').value = res.site || '';
                 targetRow.querySelector('.note').value = res.note || '';
                 targetRow.querySelector('.car').value = res.car || '';
+                
+                if (res.roomType === '재숙' || res.autoSynced === "true") {
+                  targetRow.querySelector('.room-type').value = '재숙';
+                  targetRow.classList.add('restay-row');
+                  if (res.autoSynced === "true") targetRow.dataset.autoSynced = "true";
+                }
               }
             });
           }
@@ -676,6 +682,7 @@
           }
         }
 
+        // 2. 다른 날짜 문서들을 순회하여 현재 날짜가 체크인~체크아웃 사이에 포함되는 연박(재숙) 건 자동 반영
         const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         querySnapshot.forEach((docSnap) => {
           if (docSnap.id === targetDate) return;
