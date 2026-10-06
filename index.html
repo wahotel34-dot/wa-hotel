@@ -93,7 +93,7 @@
         <tr>
           <th style="width: 30px;">NO</th><th style="width: 42px;">호실</th><th style="width: 155px;">예약자(이름)</th>
           <th style="width: 72px;">체크인</th><th style="width: 72px;">체크아웃</th><th style="width: 30px;">연박</th>
-          <th style="width: 40px;">구분</th><th style="width: 65px;">요금</th><th style="width: 60px;">현금</th>
+          <th style="width: 40px;">구분</th><th style="width: 65px;">요금</th><th style="width: 65px;">현금</th>
           <th style="width: 60px;">카드</th><th style="width: 60px;">계좌</th><th style="width: 60px;">잔액</th>
           <th style="width: 75px;">사이트</th><th>연락처 · 비고</th><th style="width: 45px;">차량</th>
         </tr>
@@ -143,7 +143,7 @@
   </div>
 
   <script>
-    const siteOpts = '<option value="">선택</option><option value="부킹" selected>부킹</option><option value="아고다">아고다</option><option value="익스피디아">익스피디아</option><option value="트립">트립</option><option value="여기어때">여기어때</option><option value="야놀자">야놀자</option><option value="쿠팡">쿠팡</option><option value="네이버">네이버</option><option value="기타">기타</option>';
+    const siteOpts = '<option value="">선택</option><option value="부킹">부킹</option><option value="아고다">아고다</option><option value="익스피디아">익스피디아</option><option value="트립">트립</option><option value="여기어때">여기어때</option><option value="야놀자">야놀자</option><option value="쿠팡">쿠팡</option><option value="네이버">네이버</option><option value="기타">기타</option>';
 
     function makeRows(list) {
       let html = '';
@@ -189,18 +189,25 @@
     let curDate = '';
     document.addEventListener('DOMContentLoaded', () => {
       const dIn = document.getElementById('work-date');
-      dIn.value = new Date().toISOString().split('T')[0];
+      dIn.value = '2026-10-06';
       curDate = dIn.value;
       
-      // 초기 로드 시 모든 행의 체크인 날짜를 일지 날짜로 기본 세팅
-      setDefaultCheckIns(curDate);
       loadData(curDate);
 
       dIn.addEventListener('change', async (e) => {
         if (curDate) await saveData(curDate);
         curDate = e.target.value;
-        setDefaultCheckIns(curDate);
         await loadData(curDate);
+      });
+
+      // 체크인 칸을 클릭(포커스)했을 때, 비어있다면 일지 날짜를 자동으로 채워줌
+      document.body.addEventListener('focusin', (e) => {
+        if (e.target.classList.contains('check-in')) {
+          if (!e.target.value) {
+            e.target.value = document.getElementById('work-date').value;
+            calc();
+          }
+        }
       });
 
       document.getElementById('btn-save').addEventListener('click', async () => {
@@ -211,7 +218,7 @@
       document.getElementById('btn-clear').addEventListener('click', () => {
         if (confirm('화면을 비우시겠습니까?')) {
           document.querySelectorAll('input:not([type="date"])').forEach(i => i.value = '');
-          setDefaultCheckIns(curDate);
+          document.querySelectorAll('.check-in').forEach(i => i.value = '');
           calc();
         }
       });
@@ -219,7 +226,6 @@
       document.getElementById('btn-reset-all').addEventListener('click', async () => {
         if (confirm('⚠️ 데이터를 초기화하시겠습니까?')) {
           await window.FB_DeleteDoc(window.FB_Doc(window.FB_DB, "hotel_logs", curDate));
-          setDefaultCheckIns(curDate);
           loadData(curDate);
         }
       });
@@ -228,20 +234,12 @@
       document.body.addEventListener('change', calc);
     });
 
-    function setDefaultCheckIns(dt) {
-      document.querySelectorAll('.check-in').forEach(input => {
-        if (!input.value) input.value = dt;
-      });
-      calc();
-    }
-
     function parseAmt(v) { return v ? Number(String(v).replace(/[^0-9]/g, '')) || 0 : 0; }
 
     function calc() {
       let p1p=0, p1c=0, p1cd=0, p1b=0, p1bal=0;
       let p2p=0, p2c=0, p2cd=0, p2b=0, p2bal=0;
 
-      // 숙박 테이블 계산 및 연박 계산
       document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)').forEach(r => {
         let cin = r.querySelector('.check-in').value;
         let cout = r.querySelector('.check-out').value;
@@ -305,6 +303,11 @@
     }
 
     async function loadData(dt) {
+      document.querySelectorAll('.check-in').forEach(i => i.value = '');
+      document.querySelectorAll('.check-out').forEach(i => i.value = '');
+      document.querySelectorAll('input:not([type="date"])').forEach(i => i.value = '');
+      document.querySelectorAll('select').forEach(s => s.value = '');
+
       try {
         let snap = await window.FB_GetDoc(window.FB_Doc(window.FB_DB, "hotel_logs", dt));
         if (snap.exists()) {
@@ -316,13 +319,13 @@
                 let r = rows[idx];
                 r.querySelector('.room-no').value = d.roomNo || '';
                 r.querySelector('.guest-name').value = d.name || '';
-                r.querySelector('.check-in').value = d.cin || dt;
+                r.querySelector('.check-in').value = d.cin || '';
                 r.querySelector('.check-out').value = d.cout || '';
                 r.querySelector('.price').value = d.p || '';
                 r.querySelector('.cash').value = d.c || '';
                 r.querySelector('.card').value = d.cd || '';
                 r.querySelector('.bank').value = d.b || '';
-                r.querySelector('.site').value = d.site || '부킹';
+                r.querySelector('.site').value = d.site || '';
                 r.querySelector('.note').value = d.note || '';
                 r.querySelector('.car').value = d.car || '';
               }
