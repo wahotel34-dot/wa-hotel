@@ -174,3 +174,141 @@
           <th style="width: 45px;">차량</th>
         </tr>
       </thead>
+      <tbody id="stay-tbody-2"></tbody>
+      <tfoot>
+        <tr class="bg-summary">
+          <td colspan="7"><strong>전체 숙박 합계</strong></td>
+          <td class="text-right"><span id="stay-sum-price">0</span></td>
+          <td class="text-right"><span id="stay-sum-cash">0</span></td>
+          <td class="text-right"><span id="stay-sum-card">0</span></td>
+          <td class="text-right"><span id="stay-sum-bank">0</span></td>
+          <td class="text-right"><span id="stay-sum-balance">0</span></td>
+          <td colspan="3"></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div style="display:none;">
+      <span id="p1-sum-price">0</span><span id="p1-sum-cash">0</span><span id="p1-sum-card">0</span><span id="p1-sum-bank">0</span><span id="p1-sum-balance">0</span>
+      <span id="p2-sum-price">0</span><span id="p2-sum-cash">0</span><span id="p2-sum-card">0</span><span id="p2-sum-bank">0</span><span id="p2-sum-balance">0</span>
+    </div>
+
+    <h3 style="margin-top: 20px; color: #333; font-size: 18px; font-weight: bold;">♥ 대실</h3>
+    <table id="rent-table">
+      <thead>
+        <tr>
+          <th style="width: 35px;">순번</th>
+          <th style="width: 55px;">호실</th>
+          <th style="width: 85px;">카드</th>
+          <th style="width: 85px;">현금</th>
+          <th style="width: 110px;">사이트</th>
+          <th style="width: 80px;">입실시간</th>
+          <th style="width: 15px; border:none; background:white;"></th>
+          <th style="width: 35px;">순번</th>
+          <th style="width: 55px;">호실</th>
+          <th style="width: 85px;">카드</th>
+          <th style="width: 85px;">현금</th>
+          <th style="width: 110px;">사이트</th>
+          <th style="width: 80px;">입실시간</th>
+        </tr>
+      </thead>
+      <tbody id="rent-tbody"></tbody>
+      <tfoot>
+        <tr class="bg-summary">
+          <td colspan="2"><strong>대실 합계</strong></td>
+          <td>카드: <span id="rent-sum-card">0</span></td>
+          <td>현금: <span id="rent-sum-cash">0</span></td>
+          <td colspan="9"></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div style="margin-top: 15px; background: #fff; border: 2px solid #ccc; border-radius: 6px; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center;">
+      <div style="font-size: 14px; font-weight: bold; color: #333;">
+        📋 오늘 전체 통합 마감 요약 (숙박 + 대실)
+      </div>
+      <div style="font-size: 13px; line-height: 1.6; text-align: right;">
+        총 현금: <span id="total-cash-combined" style="font-weight: bold;">0</span>원 &nbsp;|&nbsp; 
+        총 카드: <span id="total-card-combined" style="font-weight: bold;">0</span>원<br>
+        <strong style="color: #0056b3; font-size: 15px;">최종 마감 총합: <span id="total-sum-grand">0</span>원</strong>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const part1Categories = [
+      { name: "♥ 스탠다드더블 (총 13실)", start: 1, count: 13, categoryKey: "std_double" },
+      { name: "♥ 디럭스더블 (총 7실)", start: 14, count: 7, categoryKey: "dlx_double" }
+    ];
+
+    const part2Categories = [
+      { name: "♥ 스탠다드 트윈 (총 6실)", start: 21, count: 6, categoryKey: "std_twin" },
+      { name: "♥ 디럭스 트윈 (총 8실)", start: 27, count: 8, categoryKey: "dlx_twin" },
+      { name: "♥ 슈페리어 더블 (총 7실)", start: 35, count: 7, categoryKey: "sup_double" }
+    ];
+
+    function getSiteOptionsHTML() {
+      return `
+        <option value="">선택</option>
+        <option value="부킹" selected>부킹</option>
+        <option value="아고다">아고다</option>
+        <option value="익스피디아">익스피디아</option>
+        <option value="트립">트립</option>
+        <option value="여기어때">여기어때</option>
+        <option value="야놀자">야놀자</option>
+        <option value="쿠팡">쿠팡</option>
+        <option value="네이버">네이버</option>
+        <option value="기타">기타</option>
+      `;
+    }
+
+    let currentLoadingDate = '';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const dateInput = document.getElementById('work-date');
+      const today = new Date().toISOString().split('T')[0];
+      if (!dateInput.value) dateInput.value = today;
+
+      currentLoadingDate = dateInput.value;
+
+      buildStayTables();
+      buildRentTable();
+      loadDataForDate(currentLoadingDate);
+
+      dateInput.addEventListener('change', async (e) => {
+        if (currentLoadingDate) {
+          await saveDataForDate(currentLoadingDate);
+        }
+        currentLoadingDate = e.target.value;
+        await loadDataForDate(currentLoadingDate);
+      });
+
+      document.getElementById('btn-reset-all').addEventListener('click', async () => {
+        if (confirm('⚠️ [경고] 현재 일지 날짜의 클라우드 데이터를 완전히 초기화하시겠습니까?')) {
+          try {
+            const db = window.FB_DB;
+            if (db) {
+              await window.FB_DeleteDoc(window.FB_Doc(db, "hotel_logs", currentLoadingDate));
+              alert('현재 일지 데이터가 초기화되었습니다.');
+              loadDataForDate(currentLoadingDate);
+            }
+          } catch (err) {
+            console.error(err);
+            alert('초기화 중 오류가 발생했습니다.');
+          }
+        }
+      });
+
+      document.body.addEventListener('focusin', (e) => {
+        if (e.target.classList.contains('check-in')) {
+          if (!e.target.value) {
+            const workDateVal = document.getElementById('work-date').value;
+            if (workDateVal) {
+              e.target.value = workDateVal;
+              updateStayCalculations();
+            }
+          }
+        }
+      });
+
+      document.body
