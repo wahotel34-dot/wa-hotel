@@ -195,7 +195,7 @@
     let curDate = '';
     document.addEventListener('DOMContentLoaded', () => {
       const dIn = document.getElementById('work-date');
-      dIn.value = new Date().toISOString().split('T')[0];
+      dIn.value = '2026-10-02'; // 현재 화면에 맞춘 기본값
       curDate = dIn.value;
       loadData(curDate);
 
@@ -203,6 +203,16 @@
         if (curDate) await saveData(curDate);
         curDate = e.target.value;
         await loadData(curDate);
+      });
+
+      // 체크인 칸을 클릭하거나 포커스할 때 비어있다면 일지 날짜와 자동으로 연동
+      document.body.addEventListener('focusin', (e) => {
+        if (e.target.classList.contains('check-in')) {
+          if (!e.target.value) {
+            e.target.value = document.getElementById('work-date').value;
+            calc();
+          }
+        }
       });
 
       document.getElementById('btn-save').addEventListener('click', async () => {
