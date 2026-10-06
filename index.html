@@ -11,50 +11,19 @@
     .title { font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
     .status { font-size: 12px; color: #28a745; font-weight: bold; }
     
-    .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 15px; }
     .controls label { font-weight: bold; }
     
-    #stay-table-1 input, #stay-table-2 select,
-    #stay-table-2 input, #stay-table-1 select { 
-      padding: 6px 4px; 
-      border: 1px solid #ccc; 
-      border-radius: 4px; 
-      font-size: 13px; 
-      height: 36px; 
-    }
-    th { padding: 8px 3px; font-size: 13px; background-color: #e9ecef; font-weight: bold; text-align: center; }
-    td { border: 1px solid #dcdcdc; text-align: center; font-size: 12px; height: 38px; }
-
-    #rent-table input, #rent-table select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; height: 26px; }
-    #rent-table th, #rent-table td { padding: 4px 5px; height: auto; }
-
-    input { width: 100%; }
-    select { width: 100%; }
-    input[type="date"] { width: auto; min-width: 90px; padding: 1px; font-size: 11px; }
-    
-    button { padding: 5px 10px; font-size: 12px; cursor: pointer; border: none; border-radius: 4px; background-color: #007bff; color: white; font-weight: bold; height: 28px; }
-    button.clear-btn { background-color: #dc3545; }
-    button.reset-all-btn { background-color: #e83e8c; }
-    button.print-btn { background-color: #6c757d; }
-    
     table { width: 100%; border-collapse: collapse; margin-bottom: 15px; background: white; }
-    
-    tr.section-header td { 
-      background-color: #e2e6ea !important; 
-      font-weight: 900 !important; 
-      text-align: left !important; 
-      padding-left: 15px !important; 
-      color: #111 !important; 
-      font-size: 16px !important; 
-      height: 42px !important;
-    }
-    
-    .guest-name { font-size: 13px !important; font-weight: bold; text-align: center; }
-    .text-left { text-align: left; }
-    .text-right { text-align: right; }
-    .bg-summary { background-color: #f1f3f5 !important; font-weight: bold; }
-    .restay-row { background-color: #e6f0ff !important; font-weight: bold; }
+    th { padding: 8px 3px; font-size: 13px; background-color: #e9ecef; font-weight: bold; text-align: center; border: 1px solid #dcdcdc; }
+    td { border: 1px solid #dcdcdc; text-align: center; font-size: 12px; height: 38px; padding: 4px; }
 
+    input, select { width: 100%; padding: 6px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; height: 36px; }
+    input[type="date"] { width: auto; min-width: 110px; padding: 4px; font-size: 12px; }
+    
+    button { padding: 6px 12px; font-size: 12px; cursor: pointer; border: none; border-radius: 4px; background-color: #007bff; color: white; font-weight: bold; height: 36px; }
+    button.clear-btn { background-color: #dc3545; }
+    
     .page-section {
       background: white;
       padding: 15px;
@@ -62,30 +31,12 @@
       border-radius: 6px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
-
-    @media print {
-      @page { size: A4 landscape; margin: 8mm; }
-      body { margin: 0; background: white; font-size: 11px; color: #000; }
-      .controls, .status { display: none !important; }
-      
-      input, select { 
-        border: none !important; background: transparent !important; 
-        -webkit-appearance: none; appearance: none; padding: 0 !important; height: auto !important; font-size: 11px !important;
-      }
-      .page-section { box-shadow: none; padding: 0; margin: 0; page-break-after: always; }
-      table { width: 100% !important; }
-      th, td { border: 1px solid #999 !important; }
-      #stay-table-1 td, #stay-table-2 td { height: 26px !important; }
-      tr.section-header td { background-color: #ddd !important; -webkit-print-color-adjust: exact; font-size: 14px !important; height: 30px !important; }
-      .restay-row { background-color: #f0f4ff !important; -webkit-print-color-adjust: exact; }
-      .bg-summary { background-color: #e9ecef !important; -webkit-print-color-adjust: exact; }
-    }
   </style>
 
-  <!-- 파이어베이스 연동 스크립트 -->
+  <!-- 파이어베이스 연동 및 관리 스크립트 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA2gJqFe4qSorpXzCG5b7Ekf3ou8c4P07Q",
@@ -100,51 +51,130 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // 오늘 날짜 기본 세팅
     document.addEventListener("DOMContentLoaded", () => {
       const today = new Date().toISOString().split("T")[0];
       const dateInput = document.getElementById("log-date");
       if (dateInput && !dateInput.value) {
         dateInput.value = today;
       }
-      loadDailyData();
+      
+      loadDataForDate(dateInput.value);
 
       dateInput.addEventListener("change", () => {
-        loadDailyData();
+        loadDataForDate(dateInput.value);
+      });
+
+      document.getElementById("save-btn").addEventListener("click", () => {
+        saveData();
       });
     });
 
-    // 데이터 불러오기 함수 (날짜별 로드)
-    async function loadDailyData() {
-      const dateVal = document.getElementById("log-date").value;
-      if (!dateVal) return;
-
+    // 특정 날짜의 데이터 불러오기
+    async function loadDataForDate(dateStr) {
       try {
-        const docRef = doc(db, "hotel_logs", dateVal);
+        const docRef = doc(db, "hotel_logs", dateStr);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
           const data = docSnap.data();
-          // 데이터 적용 로직 구현부
-          console.log("데이터 로드 성공:", data);
+          document.getElementById("guest-name").value = data.guestName || "";
+          document.getElementById("check-in").value = data.checkIn || "";
+          document.getElementById("check-out").value = data.checkOut || "";
+          console.log("데이터 불러오기 완료:", dateStr);
         } else {
-          console.log("해당 날짜 데이터 없음 - 빈 화면 유지");
+          // 데이터가 없더라도 체크인~체크아웃 기간에 걸쳐 있는 다른 예약이 있는지 확인 (연박 자동 연동)
+          checkActiveStays(dateStr);
         }
       } catch (e) {
-        console.error("데이터 로드 중 오류 발생:", e);
+        console.error("불러오기 오류:", e);
+      }
+    }
+
+    // 연박 기간 중인 예약이 있다면 자동으로 끌어오는 함수
+    async function checkActiveStays(currentDateStr) {
+      try {
+        const querySnapshot = await getDocs(collection(db, "hotel_logs"));
+        let found = false;
+        
+        querySnapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data.checkIn && data.checkOut) {
+            // 현재 일지 날짜가 체크인 날짜와 체크아웃 날짜 사이에 포함되는지 확인
+            if (currentDateStr >= data.checkIn && currentDateStr < data.checkOut) {
+              document.getElementById("guest-name").value = data.guestName || "";
+              document.getElementById("check-in").value = data.checkIn || "";
+              document.getElementById("check-out").value = data.checkOut || "";
+              found = true;
+            }
+          }
+        });
+
+        if (!found) {
+          document.getElementById("guest-name").value = "";
+          document.getElementById("check-in").value = "";
+          document.getElementById("check-out").value = "";
+        }
+      } catch (e) {
+        console.error("연박 체크 오류:", e);
+      }
+    }
+
+    // 데이터 저장하기
+    async function saveData() {
+      const dateStr = document.getElementById("log-date").value;
+      const guestName = document.getElementById("guest-name").value;
+      const checkIn = document.getElementById("check-in").value;
+      const checkOut = document.getElementById("check-out").value;
+
+      if (!dateStr) {
+        alert("날짜를 선택해주세요.");
+        return;
+      }
+
+      try {
+        await setDoc(doc(db, "hotel_logs", dateStr), {
+          guestName,
+          checkIn,
+          checkOut,
+          updatedAt: new Date().toISOString()
+        });
+        alert("성공적으로 저장되었습니다!");
+      } catch (e) {
+        console.error("저장 오류:", e);
+        alert("저장 중 오류가 발생했습니다.");
       }
     }
   </script>
 </head>
 <body>
   <div class="header-container">
-    <div class="title">WA HOTEL 예약 관리 일지 (클라우드 연동형)</div>
+    <div class="title">WA HOTEL 예약 관리 일지</div>
     <div class="status">🟢 클라우드 모드</div>
   </div>
   
   <div class="controls">
     <label for="log-date">일지 날짜:</label>
     <input type="date" id="log-date">
+    <button id="save-btn">💾 저장</button>
+  </div>
+
+  <div class="page-section">
+    <table>
+      <thead>
+        <tr>
+          <th>예약자 (이름)</th>
+          <th>체크인 날짜</th>
+          <th>체크아웃 날짜</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><input type="text" id="guest-name" placeholder="예약자 성함 입력"></td>
+          <td><input type="date" id="check-in"></td>
+          <td><input type="date" id="check-out"></td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </body>
 </html>
