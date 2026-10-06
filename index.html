@@ -82,14 +82,15 @@
     }
   </style>
 
+  <!-- 파이어베이스 연동 스크립트 -->
   <script type="module">
-    import { initializeApp } from "[https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js](https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js)";
-    import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "[https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js](https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js)";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA2gJqFe4qSorpXzCG5b7Ekf3ou8c4P07Q",
       authDomain: "wa-hotel-384c0.firebaseapp.com",
-      databaseURL: "[https://wa-hotel-384c0-default-rtdb.firebaseio.com](https://wa-hotel-384c0-default-rtdb.firebaseio.com)",
+      databaseURL: "https://wa-hotel-384c0-default-rtdb.firebaseio.com",
       projectId: "wa-hotel-384c0",
       storageBucket: "wa-hotel-384c0.firebasestorage.app",
       messagingSenderId: "994582437050",
@@ -414,8 +415,9 @@
       const stayRows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
 
       const getMidnightTime = (dateStr) => {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        return new Date(y, m - 1, d).getTime();
+        const d = new Date(dateStr);
+        d.setHours(0, 0, 0, 0);
+        return d.getTime();
       };
 
       const workTime = getMidnightTime(workDateStr);
@@ -440,16 +442,16 @@
 
           if (workTime === inTime) {
             if (stayDaysInput) stayDaysInput.value = diffDays > 1 ? diffDays : '';
-            if (roomTypeInput && roomTypeInput.value !== '재숙') roomTypeInput.value = '';
-            if (roomTypeInput.value !== '재숙') row.classList.remove('restay-row');
+            if (roomTypeInput) roomTypeInput.value = '';
+            row.classList.remove('restay-row');
           } else if (workTime > inTime && workTime < outTime) {
             if (stayDaysInput) stayDaysInput.value = '';
             if (roomTypeInput) roomTypeInput.value = '재숙';
             row.classList.add('restay-row');
           } else {
             if (stayDaysInput) stayDaysInput.value = '';
-            if (roomTypeInput && roomTypeInput.value !== '재숙') roomTypeInput.value = '';
-            if (roomTypeInput.value !== '재숙') row.classList.remove('restay-row');
+            if (roomTypeInput) roomTypeInput.value = '';
+            row.classList.remove('restay-row');
           }
         }
       });
@@ -562,6 +564,8 @@
         const guestNameVal = row.querySelector('.guest-name')?.value.trim();
         if (!guestNameVal) return;
 
+        if (row.dataset.autoSynced === "true") return;
+
         currentStay.push({
           catKey: row.getAttribute('data-cat-key') || '',
           roomNo: row.querySelector('.room-no')?.value || '',
@@ -576,8 +580,7 @@
           bank: row.querySelector('.bank')?.value || '',
           site: row.querySelector('.site')?.value || '',
           note: row.querySelector('.note')?.value || '',
-          car: row.querySelector('.car')?.value || '',
-          autoSynced: row.dataset.autoSynced === "true" ? "true" : "false"
+          car: row.querySelector('.car')?.value || ''
         });
       });
 
@@ -625,31 +628,13 @@
       });
 
       const getMidnightTime = (dateStr) => {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        return new Date(y, m - 1, d).getTime();
+        const d = new Date(dateStr);
+        d.setHours(0, 0, 0, 0);
+        return d.getTime();
       };
       const workTime = getMidnightTime(targetDate);
 
       try {
-        const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
-        const restayList = [];
-
-        querySnapshot.forEach((docSnap) => {
-          const pData = docSnap.data();
-          if (pData.stay && Array.isArray(pData.stay)) {
-            pData.stay.forEach(res => {
-              if (res.checkIn && res.checkOut && res.guestName) {
-                let inT = getMidnightTime(res.checkIn);
-                let outT = getMidnightTime(res.checkOut);
-                
-                if (workTime > inT && workTime < outT) {
-                  restayList.push(res);
-                }
-              }
-            });
-          }
-        });
-
         const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -675,12 +660,6 @@
                 targetRow.querySelector('.site').value = res.site || '';
                 targetRow.querySelector('.note').value = res.note || '';
                 targetRow.querySelector('.car').value = res.car || '';
-                
-                if (res.roomType === '재숙' || res.autoSynced === "true") {
-                  targetRow.querySelector('.room-type').value = '재숙';
-                  targetRow.classList.add('restay-row');
-                  if (res.autoSynced === "true") targetRow.dataset.autoSynced = "true";
-                }
               }
             });
           }
@@ -697,32 +676,39 @@
           }
         }
 
-        restayList.forEach(res => {
-          const alreadyExists = Array.from(rows).some(r => {
-            const name = r.querySelector('.guest-name')?.value.trim();
-            const cin = r.querySelector('.check-in')?.value;
-            const cout = r.querySelector('.check-out')?.value;
-            return name === res.guestName.trim() && cin === res.checkIn && cout === res.checkOut;
-          });
+        const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
+        querySnapshot.forEach((docSnap) => {
+          if (docSnap.id === targetDate) return;
+          const pData = docSnap.data();
+          if (pData.stay && Array.isArray(pData.stay)) {
+            pData.stay.forEach(res => {
+              if (res.checkIn && res.checkOut && res.guestName) {
+                let inT = getMidnightTime(res.checkIn);
+                let outT = getMidnightTime(res.checkOut);
+                
+                if (workTime > inT && workTime < outT) {
+                  const alreadyExists = Array.from(rows).some(r => {
+                    const name = r.querySelector('.guest-name')?.value.trim();
+                    const cin = r.querySelector('.check-in')?.value;
+                    const cout = r.querySelector('.check-out')?.value;
+                    return name === res.guestName.trim() && cin === res.checkIn && cout === res.checkOut;
+                  });
 
-          if (!alreadyExists) {
-            let emptyRow = null;
-            if (res.catKey) {
-              emptyRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
-            }
-            if (!emptyRow) {
-              emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
-            }
-
-            if (emptyRow) {
-              emptyRow.querySelector('.room-no').value = res.roomNo || '';
-              emptyRow.querySelector('.guest-name').value = res.guestName || '';
-              emptyRow.querySelector('.check-in').value = res.checkIn || '';
-              emptyRow.querySelector('.check-out').value = res.checkOut || '';
-              emptyRow.querySelector('.room-type').value = '재숙';
-              emptyRow.classList.add('restay-row');
-              emptyRow.dataset.autoSynced = "true";
-            }
+                  if (!alreadyExists) {
+                    let emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+                    if (emptyRow) {
+                      emptyRow.querySelector('.room-no').value = res.roomNo || '';
+                      emptyRow.querySelector('.guest-name').value = res.guestName || '';
+                      emptyRow.querySelector('.check-in').value = res.checkIn || '';
+                      emptyRow.querySelector('.check-out').value = res.checkOut || '';
+                      emptyRow.querySelector('.room-type').value = '재숙';
+                      emptyRow.classList.add('restay-row');
+                      emptyRow.dataset.autoSynced = "true";
+                    }
+                  }
+                }
+              }
+            });
           }
         });
 
