@@ -34,7 +34,6 @@
     }
     .text-right { text-align: right; }
     .bg-summary { background-color: #f1f3f5 !important; font-weight: bold; }
-    .restay-row { background-color: #e6f0ff !important; font-weight: bold; }
     .page-section { background: white; padding: 15px; margin-bottom: 20px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
   </style>
 
@@ -113,11 +112,6 @@
       </tfoot>
     </table>
 
-    <div style="display:none;">
-      <span id="p1-sum-price">0</span><span id="p1-sum-cash">0</span><span id="p1-sum-card">0</span><span id="p1-sum-bank">0</span><span id="p1-sum-balance">0</span>
-      <span id="p2-sum-price">0</span><span id="p2-sum-cash">0</span><span id="p2-sum-card">0</span><span id="p2-sum-bank">0</span><span id="p2-sum-balance">0</span>
-    </div>
-
     <h3 style="margin-top: 20px; font-size: 18px;">♥ 대실</h3>
     <table id="rent-table">
       <thead>
@@ -195,24 +189,18 @@
     let curDate = '';
     document.addEventListener('DOMContentLoaded', () => {
       const dIn = document.getElementById('work-date');
-      dIn.value = '2026-10-02'; // 현재 화면에 맞춘 기본값
+      dIn.value = new Date().toISOString().split('T')[0];
       curDate = dIn.value;
+      
+      // 초기 로드 시 모든 행의 체크인 날짜를 일지 날짜로 기본 세팅
+      setDefaultCheckIns(curDate);
       loadData(curDate);
 
       dIn.addEventListener('change', async (e) => {
         if (curDate) await saveData(curDate);
         curDate = e.target.value;
+        setDefaultCheckIns(curDate);
         await loadData(curDate);
-      });
-
-      // 체크인 칸을 클릭하거나 포커스할 때 비어있다면 일지 날짜와 자동으로 연동
-      document.body.addEventListener('focusin', (e) => {
-        if (e.target.classList.contains('check-in')) {
-          if (!e.target.value) {
-            e.target.value = document.getElementById('work-date').value;
-            calc();
-          }
-        }
       });
 
       document.getElementById('btn-save').addEventListener('click', async () => {
@@ -223,6 +211,7 @@
       document.getElementById('btn-clear').addEventListener('click', () => {
         if (confirm('화면을 비우시겠습니까?')) {
           document.querySelectorAll('input:not([type="date"])').forEach(i => i.value = '');
+          setDefaultCheckIns(curDate);
           calc();
         }
       });
@@ -230,6 +219,7 @@
       document.getElementById('btn-reset-all').addEventListener('click', async () => {
         if (confirm('⚠️ 데이터를 초기화하시겠습니까?')) {
           await window.FB_DeleteDoc(window.FB_Doc(window.FB_DB, "hotel_logs", curDate));
+          setDefaultCheckIns(curDate);
           loadData(curDate);
         }
       });
@@ -238,30 +228,44 @@
       document.body.addEventListener('change', calc);
     });
 
+    function setDefaultCheckIns(dt) {
+      document.querySelectorAll('.check-in').forEach(input => {
+        if (!input.value) input.value = dt;
+      });
+      calc();
+    }
+
     function parseAmt(v) { return v ? Number(String(v).replace(/[^0-9]/g, '')) || 0 : 0; }
 
     function calc() {
       let p1p=0, p1c=0, p1cd=0, p1b=0, p1bal=0;
       let p2p=0, p2c=0, p2cd=0, p2b=0, p2bal=0;
 
-      document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header)').forEach(r => {
-        let p = parseAmt(r.querySelector('.price').value);
-        let c = parseAmt(r.querySelector('.cash').value);
-        let cd = parseAmt(r.querySelector('.card').value);
-        let b = parseAmt(r.querySelector('.bank').value);
-        let bal = p - (c + cd + b);
-        r.querySelector('.balance').textContent = bal.toLocaleString();
-        p1p+=p; p1c+=c; p1cd+=cd; p1b+=b; p1bal+=bal;
-      });
+      // 숙박 테이블 계산 및 연박 계산
+      document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)').forEach(r => {
+        let cin = r.querySelector('.check-in').value;
+        let cout = r.querySelector('.check-out').value;
+        if (cin && cout) {
+          let d1 = new Date(cin);
+          let d2 = new Date(cout);
+          let diff = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+          r.querySelector('.stay-days').value = diff > 0 ? diff : '';
+        } else {
+          r.querySelector('.stay-days').value = '';
+        }
 
-      document.querySelectorAll('#stay-table-2 tbody tr:not(.section-header)').forEach(r => {
         let p = parseAmt(r.querySelector('.price').value);
         let c = parseAmt(r.querySelector('.cash').value);
         let cd = parseAmt(r.querySelector('.card').value);
         let b = parseAmt(r.querySelector('.bank').value);
         let bal = p - (c + cd + b);
         r.querySelector('.balance').textContent = bal.toLocaleString();
-        p2p+=p; p2c+=c; p2cd+=cd; p2b+=b; p2bal+=bal;
+
+        if (r.closest('#stay-table-1')) {
+          p1p+=p; p1c+=c; p1cd+=cd; p1b+=b; p1bal+=bal;
+        } else {
+          p2p+=p; p2c+=c; p2cd+=cd; p2b+=b; p2bal+=bal;
+        }
       });
 
       let sP = p1p + p2p, sC = p1c + p2c, sCd = p1cd + p2cd, sB = p1b + p2b;
@@ -301,25 +305,24 @@
     }
 
     async function loadData(dt) {
-      document.querySelectorAll('input:not([type="date"])').forEach(i => i.value = '');
       try {
         let snap = await window.FB_GetDoc(window.FB_Doc(window.FB_DB, "hotel_logs", dt));
         if (snap.exists()) {
           let data = snap.data();
           if (data.stay) {
             let rows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
-            data.stay.forEach((d) => {
-              let r = Array.from(rows).find(x => x.dataset.catKey === d.k && !x.querySelector('.guest-name').value) || Array.from(rows).find(x => !x.querySelector('.guest-name').value);
-              if (r) {
+            data.stay.forEach((d, idx) => {
+              if (rows[idx]) {
+                let r = rows[idx];
                 r.querySelector('.room-no').value = d.roomNo || '';
                 r.querySelector('.guest-name').value = d.name || '';
-                r.querySelector('.check-in').value = d.cin || '';
+                r.querySelector('.check-in').value = d.cin || dt;
                 r.querySelector('.check-out').value = d.cout || '';
                 r.querySelector('.price').value = d.p || '';
                 r.querySelector('.cash').value = d.c || '';
                 r.querySelector('.card').value = d.cd || '';
                 r.querySelector('.bank').value = d.b || '';
-                r.querySelector('.site').value = d.site || '';
+                r.querySelector('.site').value = d.site || '부킹';
                 r.querySelector('.note').value = d.note || '';
                 r.querySelector('.car').value = d.car || '';
               }
