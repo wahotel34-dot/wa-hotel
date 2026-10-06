@@ -152,6 +152,7 @@
       <tbody id="stay-tbody-1"></tbody>
     </table>
   </div>
+
   <div class="page-section">
     <table id="stay-table-2">
       <thead>
@@ -396,108 +397,3 @@
             <td><input type="text" class="rent-time" value=":" style="text-align:center;"></td>
             <td style="border:none;"></td>
             <td>${i + 10}</td>
-            <td><input type="text" class="rent-room" style="text-align:center;"></td>
-            <td><input type="text" class="rent-card calc-trigger text-right"></td>
-            <td><input type="text" class="rent-cash calc-trigger text-right"></td>
-            <td><select class="rent-site">${getSiteOptionsHTML()}</select></td>
-            <td><input type="text" class="rent-time" value=":" style="text-align:center;"></td>
-          </tr>
-        `;
-      }
-      tbody.innerHTML = html;
-    }
-
-    function updateStayCalculations() {
-      const workDateStr = document.getElementById('work-date').value;
-      if (!workDateStr) return;
-
-      const stayRows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
-
-      const getMidnightTime = (dateStr) => {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        return new Date(y, m - 1, d).getTime();
-      };
-
-      const workTime = getMidnightTime(workDateStr);
-
-      stayRows.forEach(row => {
-        const guestNameVal = row.querySelector('.guest-name')?.value.trim();
-        const checkInVal = row.querySelector('.check-in')?.value;
-        const checkOutVal = row.querySelector('.check-out')?.value;
-        const stayDaysInput = row.querySelector('.stay-days');
-        const roomTypeInput = row.querySelector('.room-type');
-
-        if (!guestNameVal || !checkInVal || !checkOutVal) {
-          if (!row.dataset.autoSynced) {
-            if (stayDaysInput) stayDaysInput.value = '';
-            if (roomTypeInput) roomTypeInput.value = '';
-            row.classList.remove('restay-row');
-          }
-        } else {
-          const inTime = getMidnightTime(checkInVal);
-          const outTime = getMidnightTime(checkOutVal);
-          const diffDays = Math.round((outTime - inTime) / (1000 * 60 * 60 * 24));
-
-          if (workTime === inTime) {
-            if (stayDaysInput) stayDaysInput.value = diffDays > 1 ? diffDays : '';
-            if (roomTypeInput && roomTypeInput.value !== '재숙') roomTypeInput.value = '';
-            if (roomTypeInput.value !== '재숙') row.classList.remove('restay-row');
-          } else if (workTime > inTime && workTime < outTime) {
-            if (stayDaysInput) stayDaysInput.value = '';
-            if (roomTypeInput) roomTypeInput.value = '재숙';
-            row.classList.add('restay-row');
-          } else {
-            if (stayDaysInput) stayDaysInput.value = '';
-            if (roomTypeInput && roomTypeInput.value !== '재숙') roomTypeInput.value = '';
-            if (roomTypeInput.value !== '재숙') row.classList.remove('restay-row');
-          }
-        }
-      });
-      calculateTotals();
-    }
-
-    function calculateTotals() {
-      let p1Price = 0, p1Cash = 0, p1Card = 0, p1Bank = 0, p1Balance = 0;
-      let p2Price = 0, p2Cash = 0, p2Card = 0, p2Bank = 0, p2Balance = 0;
-
-      const p1Rows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header)');
-      p1Rows.forEach(row => {
-        const p = parseAmount(row.querySelector('.price')?.value);
-        const c = parseAmount(row.querySelector('.cash')?.value);
-        const cd = parseAmount(row.querySelector('.card')?.value);
-        const b = parseAmount(row.querySelector('.bank')?.value);
-        let bal = p - (c + cd + b);
-        row.querySelector('.balance').textContent = bal.toLocaleString();
-        p1Price += p; p1Cash += c; p1Card += cd; p1Bank += b; p1Balance += bal;
-      });
-
-      document.getElementById('p1-sum-price').textContent = p1Price.toLocaleString();
-      document.getElementById('p1-sum-cash').textContent = p1Cash.toLocaleString();
-      document.getElementById('p1-sum-card').textContent = p1Card.toLocaleString();
-      document.getElementById('p1-sum-bank').textContent = p1Bank.toLocaleString();
-      document.getElementById('p1-sum-balance').textContent = p1Balance.toLocaleString();
-
-      const p2Rows = document.querySelectorAll('#stay-table-2 tbody tr:not(.section-header)');
-      p2Rows.forEach(row => {
-        const p = parseAmount(row.querySelector('.price')?.value);
-        const c = parseAmount(row.querySelector('.cash')?.value);
-        const cd = parseAmount(row.querySelector('.card')?.value);
-        const b = parseAmount(row.querySelector('.bank')?.value);
-        let bal = p - (c + cd + b);
-        row.querySelector('.balance').textContent = bal.toLocaleString();
-        p2Price += p; p2Cash += c; p2Card += cd; p2Bank += b; p2Balance += bal;
-      });
-
-      document.getElementById('p2-sum-price').textContent = p2Price.toLocaleString();
-      document.getElementById('p2-sum-cash').textContent = p2Cash.toLocaleString();
-      document.getElementById('p2-sum-card').textContent = p2Card.toLocaleString();
-      document.getElementById('p2-sum-bank').textContent = p2Bank.toLocaleString();
-      document.getElementById('p2-sum-balance').textContent = p2Balance.toLocaleString();
-
-      const stayPrice = p1Price + p2Price, stayCash = p1Cash + p2Cash, stayCard = p1Card + p2Card, stayBank = p1Bank + p2Bank;
-
-      document.getElementById('stay-sum-price').textContent = stayPrice.toLocaleString();
-      document.getElementById('stay-sum-cash').textContent = stayCash.toLocaleString();
-      document.getElementById('stay-sum-card').textContent = stayCard.toLocaleString();
-      document.getElementById('stay-sum-bank').textContent = stayBank.toLocaleString();
-      document.getElementById
