@@ -82,15 +82,14 @@
     }
   </style>
 
-  <!-- 파이어베이스 연동 스크립트 -->
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { initializeApp } from "[https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js](https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js)";
+    import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "[https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js](https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js)";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA2gJqFe4qSorpXzCG5b7Ekf3ou8c4P07Q",
       authDomain: "wa-hotel-384c0.firebaseapp.com",
-      databaseURL: "https://wa-hotel-384c0-default-rtdb.firebaseio.com",
+      databaseURL: "[https://wa-hotel-384c0-default-rtdb.firebaseio.com](https://wa-hotel-384c0-default-rtdb.firebaseio.com)",
       projectId: "wa-hotel-384c0",
       storageBucket: "wa-hotel-384c0.firebasestorage.app",
       messagingSenderId: "994582437050",
@@ -397,3 +396,365 @@
             <td><input type="text" class="rent-time" value=":" style="text-align:center;"></td>
             <td style="border:none;"></td>
             <td>${i + 10}</td>
+            <td><input type="text" class="rent-room" style="text-align:center;"></td>
+            <td><input type="text" class="rent-card calc-trigger text-right"></td>
+            <td><input type="text" class="rent-cash calc-trigger text-right"></td>
+            <td><select class="rent-site">${getSiteOptionsHTML()}</select></td>
+            <td><input type="text" class="rent-time" value=":" style="text-align:center;"></td>
+          </tr>
+        `;
+      }
+      tbody.innerHTML = html;
+    }
+
+    function updateStayCalculations() {
+      const workDateStr = document.getElementById('work-date').value;
+      if (!workDateStr) return;
+
+      const stayRows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
+
+      const getMidnightTime = (dateStr) => {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        return new Date(y, m - 1, d).getTime();
+      };
+
+      const workTime = getMidnightTime(workDateStr);
+
+      stayRows.forEach(row => {
+        const guestNameVal = row.querySelector('.guest-name')?.value.trim();
+        const checkInVal = row.querySelector('.check-in')?.value;
+        const checkOutVal = row.querySelector('.check-out')?.value;
+        const stayDaysInput = row.querySelector('.stay-days');
+        const roomTypeInput = row.querySelector('.room-type');
+
+        if (!guestNameVal || !checkInVal || !checkOutVal) {
+          if (!row.dataset.autoSynced) {
+            if (stayDaysInput) stayDaysInput.value = '';
+            if (roomTypeInput) roomTypeInput.value = '';
+            row.classList.remove('restay-row');
+          }
+        } else {
+          const inTime = getMidnightTime(checkInVal);
+          const outTime = getMidnightTime(checkOutVal);
+          const diffDays = Math.round((outTime - inTime) / (1000 * 60 * 60 * 24));
+
+          if (workTime === inTime) {
+            if (stayDaysInput) stayDaysInput.value = diffDays > 1 ? diffDays : '';
+            if (roomTypeInput && roomTypeInput.value !== '재숙') roomTypeInput.value = '';
+            if (roomTypeInput.value !== '재숙') row.classList.remove('restay-row');
+          } else if (workTime > inTime && workTime < outTime) {
+            if (stayDaysInput) stayDaysInput.value = '';
+            if (roomTypeInput) roomTypeInput.value = '재숙';
+            row.classList.add('restay-row');
+          } else {
+            if (stayDaysInput) stayDaysInput.value = '';
+            if (roomTypeInput && roomTypeInput.value !== '재숙') roomTypeInput.value = '';
+            if (roomTypeInput.value !== '재숙') row.classList.remove('restay-row');
+          }
+        }
+      });
+      calculateTotals();
+    }
+
+    function calculateTotals() {
+      let p1Price = 0, p1Cash = 0, p1Card = 0, p1Bank = 0, p1Balance = 0;
+      let p2Price = 0, p2Cash = 0, p2Card = 0, p2Bank = 0, p2Balance = 0;
+
+      const p1Rows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header)');
+      p1Rows.forEach(row => {
+        const p = parseAmount(row.querySelector('.price')?.value);
+        const c = parseAmount(row.querySelector('.cash')?.value);
+        const cd = parseAmount(row.querySelector('.card')?.value);
+        const b = parseAmount(row.querySelector('.bank')?.value);
+        let bal = p - (c + cd + b);
+        row.querySelector('.balance').textContent = bal.toLocaleString();
+        p1Price += p; p1Cash += c; p1Card += cd; p1Bank += b; p1Balance += bal;
+      });
+
+      document.getElementById('p1-sum-price').textContent = p1Price.toLocaleString();
+      document.getElementById('p1-sum-cash').textContent = p1Cash.toLocaleString();
+      document.getElementById('p1-sum-card').textContent = p1Card.toLocaleString();
+      document.getElementById('p1-sum-bank').textContent = p1Bank.toLocaleString();
+      document.getElementById('p1-sum-balance').textContent = p1Balance.toLocaleString();
+
+      const p2Rows = document.querySelectorAll('#stay-table-2 tbody tr:not(.section-header)');
+      p2Rows.forEach(row => {
+        const p = parseAmount(row.querySelector('.price')?.value);
+        const c = parseAmount(row.querySelector('.cash')?.value);
+        const cd = parseAmount(row.querySelector('.card')?.value);
+        const b = parseAmount(row.querySelector('.bank')?.value);
+        let bal = p - (c + cd + b);
+        row.querySelector('.balance').textContent = bal.toLocaleString();
+        p2Price += p; p2Cash += c; p2Card += cd; p2Bank += b; p2Balance += bal;
+      });
+
+      document.getElementById('p2-sum-price').textContent = p2Price.toLocaleString();
+      document.getElementById('p2-sum-cash').textContent = p2Cash.toLocaleString();
+      document.getElementById('p2-sum-card').textContent = p2Card.toLocaleString();
+      document.getElementById('p2-sum-bank').textContent = p2Bank.toLocaleString();
+      document.getElementById('p2-sum-balance').textContent = p2Balance.toLocaleString();
+
+      const stayPrice = p1Price + p2Price, stayCash = p1Cash + p2Cash, stayCard = p1Card + p2Card, stayBank = p1Bank + p2Bank;
+
+      document.getElementById('stay-sum-price').textContent = stayPrice.toLocaleString();
+      document.getElementById('stay-sum-cash').textContent = stayCash.toLocaleString();
+      document.getElementById('stay-sum-card').textContent = stayCard.toLocaleString();
+      document.getElementById('stay-sum-bank').textContent = stayBank.toLocaleString();
+      document.getElementById('stay-sum-balance').textContent = (p1Balance + p2Balance).toLocaleString();
+
+      let rentCard = 0, rentCash = 0;
+      document.querySelectorAll('.rent-card').forEach(input => rentCard += parseAmount(input.value));
+      document.querySelectorAll('.rent-cash').forEach(input => rentCash += parseAmount(input.value));
+
+      document.getElementById('rent-sum-card').textContent = rentCard.toLocaleString();
+      document.getElementById('rent-sum-cash').textContent = rentCash.toLocaleString();
+
+      const totalCashCombined = stayCash + rentCash;
+      const totalCardCombined = stayCard + rentCard;
+      const grandTotalSum = totalCashCombined + totalCardCombined + stayBank;
+
+      document.getElementById('total-cash-combined').textContent = totalCashCombined.toLocaleString();
+      document.getElementById('total-card-combined').textContent = totalCardCombined.toLocaleString();
+      document.getElementById('total-sum-grand').textContent = grandTotalSum.toLocaleString();
+    }
+
+    function checkCapacityAlerts() {
+      const currentDate = document.getElementById('work-date').value;
+      if (!currentDate) return;
+
+      const rows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
+      let counts = { std_double: 0, dlx_double: 0, std_twin: 0, dlx_twin: 0, sup_double: 0 };
+
+      rows.forEach(row => {
+        const guestName = row.querySelector('.guest-name')?.value.trim();
+        const checkIn = row.querySelector('.check-in')?.value;
+        const checkOut = row.querySelector('.check-out')?.value;
+        const catKey = row.getAttribute('data-cat-key');
+
+        if (guestName && checkIn && checkOut) {
+          if (checkIn <= currentDate && currentDate < checkOut) {
+            if (counts[catKey] !== undefined) counts[catKey]++;
+          }
+        }
+      });
+
+      let alerts = [];
+      let stdDlxSum = counts.std_double + counts.dlx_double;
+      if (stdDlxSum > 15) alerts.push(`🚨 [알림] 스탠다드·디럭스 더블 총합이 ${stdDlxSum}개로 15개를 초과했습니다!`);
+
+      let twinSum = counts.std_twin + counts.dlx_twin;
+      if (twinSum > 12) alerts.push(`🚨 [알림] 스탠다드·디럭스 트윈 총합이 ${twinSum}개로 12개를 초과했습니다!`);
+
+      if (counts.sup_double > 5) alerts.push(`🚨 [알림] 슈페리어 더블이 ${counts.sup_double}개로 5개를 초과했습니다!`);
+
+      if (alerts.length > 0) alert(alerts.join('\n\n'));
+    }
+
+    async function saveDataForDate(targetDate) {
+      if (!targetDate) return;
+      const db = window.FB_DB;
+      if (!db) return;
+
+      const currentStay = [];
+      const stayRows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
+      
+      stayRows.forEach(row => {
+        const guestNameVal = row.querySelector('.guest-name')?.value.trim();
+        if (!guestNameVal) return;
+
+        currentStay.push({
+          catKey: row.getAttribute('data-cat-key') || '',
+          roomNo: row.querySelector('.room-no')?.value || '',
+          guestName: guestNameVal,
+          checkIn: row.querySelector('.check-in')?.value || '',
+          checkOut: row.querySelector('.check-out')?.value || '',
+          stayDays: row.querySelector('.stay-days')?.value || '',
+          roomType: row.querySelector('.room-type')?.value || '',
+          price: row.querySelector('.price')?.value || '',
+          cash: row.querySelector('.cash')?.value || '',
+          card: row.querySelector('.card')?.value || '',
+          bank: row.querySelector('.bank')?.value || '',
+          site: row.querySelector('.site')?.value || '',
+          note: row.querySelector('.note')?.value || '',
+          car: row.querySelector('.car')?.value || '',
+          autoSynced: row.dataset.autoSynced === "true" ? "true" : "false"
+        });
+      });
+
+      const currentRent = [];
+      document.querySelectorAll('#rent-tbody tr').forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        const selects = row.querySelectorAll('select');
+        if (inputs.length >= 8 && selects.length >= 2) {
+          currentRent.push({
+            room1: inputs[0].value, card1: inputs[1].value, cash1: inputs[2].value, site1: selects[0].value, time1: inputs[3].value,
+            room2: inputs[4].value, card2: inputs[5].value, cash2: inputs[6].value, site2: selects[1].value, time2: inputs[7].value
+          });
+        }
+      });
+
+      try {
+        await window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", targetDate), {
+          stay: currentStay,
+          rent: currentRent,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error("저장 실패:", err);
+      }
+    }
+
+    async function loadDataForDate(targetDate) {
+      if (!targetDate) return;
+      const db = window.FB_DB;
+      if (!db) return;
+
+      const rows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
+      
+      rows.forEach(row => {
+        row.querySelectorAll('input').forEach(input => input.value = '');
+        row.querySelectorAll('select').forEach(select => select.value = '');
+        row.classList.remove('restay-row');
+        delete row.dataset.autoSynced;
+      });
+
+      const rentRows = document.querySelectorAll('#rent-tbody tr');
+      rentRows.forEach(row => {
+        row.querySelectorAll('input').forEach(input => input.value = input.classList.contains('rent-time') ? ':' : '');
+        row.querySelectorAll('select').forEach(select => select.value = '');
+      });
+
+      const getMidnightTime = (dateStr) => {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        return new Date(y, m - 1, d).getTime();
+      };
+      const workTime = getMidnightTime(targetDate);
+
+      try {
+        const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
+        const restayList = [];
+
+        querySnapshot.forEach((docSnap) => {
+          const pData = docSnap.data();
+          if (pData.stay && Array.isArray(pData.stay)) {
+            pData.stay.forEach(res => {
+              if (res.checkIn && res.checkOut && res.guestName) {
+                let inT = getMidnightTime(res.checkIn);
+                let outT = getMidnightTime(res.checkOut);
+                
+                if (workTime > inT && workTime < outT) {
+                  restayList.push(res);
+                }
+              }
+            });
+          }
+        });
+
+        const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.stay && Array.isArray(data.stay)) {
+            data.stay.forEach((res) => {
+              let targetRow = null;
+              if (res.catKey) {
+                targetRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
+              }
+              if (!targetRow) {
+                targetRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+              }
+
+              if (targetRow) {
+                targetRow.querySelector('.room-no').value = res.roomNo || '';
+                targetRow.querySelector('.guest-name').value = res.guestName || '';
+                targetRow.querySelector('.check-in').value = res.checkIn || '';
+                targetRow.querySelector('.check-out').value = res.checkOut || '';
+                targetRow.querySelector('.price').value = res.price || '';
+                targetRow.querySelector('.cash').value = res.cash || '';
+                targetRow.querySelector('.card').value = res.card || '';
+                targetRow.querySelector('.bank').value = res.bank || '';
+                targetRow.querySelector('.site').value = res.site || '';
+                targetRow.querySelector('.note').value = res.note || '';
+                targetRow.querySelector('.car').value = res.car || '';
+                
+                if (res.roomType === '재숙' || res.autoSynced === "true") {
+                  targetRow.querySelector('.room-type').value = '재숙';
+                  targetRow.classList.add('restay-row');
+                  if (res.autoSynced === "true") targetRow.dataset.autoSynced = "true";
+                }
+              }
+            });
+          }
+
+          if (data.rent && Array.isArray(data.rent)) {
+            data.rent.forEach((item, idx) => {
+              if (rentRows[idx]) {
+                const inputs = rentRows[idx].querySelectorAll('input');
+                const selects = rentRows[idx].querySelectorAll('select');
+                inputs[0].value = item.room1 || ''; inputs[1].value = item.card1 || ''; inputs[2].value = item.cash1 || ''; selects[0].value = item.site1 || ''; inputs[3].value = item.time1 || ':';
+                inputs[4].value = item.room2 || ''; inputs[5].value = item.card2 || ''; inputs[6].value = item.cash2 || ''; selects[1].value = item.site2 || ''; inputs[7].value = item.time2 || ':';
+              }
+            });
+          }
+        }
+
+        restayList.forEach(res => {
+          const alreadyExists = Array.from(rows).some(r => {
+            const name = r.querySelector('.guest-name')?.value.trim();
+            const cin = r.querySelector('.check-in')?.value;
+            const cout = r.querySelector('.check-out')?.value;
+            return name === res.guestName.trim() && cin === res.checkIn && cout === res.checkOut;
+          });
+
+          if (!alreadyExists) {
+            let emptyRow = null;
+            if (res.catKey) {
+              emptyRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
+            }
+            if (!emptyRow) {
+              emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+            }
+
+            if (emptyRow) {
+              emptyRow.querySelector('.room-no').value = res.roomNo || '';
+              emptyRow.querySelector('.guest-name').value = res.guestName || '';
+              emptyRow.querySelector('.check-in').value = res.checkIn || '';
+              emptyRow.querySelector('.check-out').value = res.checkOut || '';
+              emptyRow.querySelector('.room-type').value = '재숙';
+              emptyRow.classList.add('restay-row');
+              emptyRow.dataset.autoSynced = "true";
+            }
+          }
+        });
+
+      } catch (err) {
+        console.error("데이터 로드 실패:", err);
+      }
+
+      updateStayCalculations();
+    }
+
+    document.getElementById('btn-save').addEventListener('click', async () => {
+      const currentDate = document.getElementById('work-date').value;
+      await saveDataForDate(currentDate);
+      checkCapacityAlerts();
+      alert('💾 클라우드에 일지가 안전하게 저장되었습니다.');
+    });
+
+    document.getElementById('btn-clear').addEventListener('click', () => {
+      if (confirm('현재 화면의 입력 내용만 비우시겠습니까?')) {
+        const rows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
+        rows.forEach(row => {
+          row.querySelectorAll('input').forEach(input => input.value = '');
+          row.querySelectorAll('select').forEach(select => select.value = '');
+          row.classList.remove('restay-row');
+          delete row.dataset.autoSynced;
+        });
+        document.querySelectorAll('#rent-tbody input').forEach(input => input.value = input.classList.contains('rent-time') ? ':' : '');
+        document.querySelectorAll('#rent-tbody select').forEach(select => select.value = '');
+        updateStayCalculations();
+        alert('현재 화면이 비워졌습니다.');
+      }
+    });
+  </script>
+</body>
+</html>
