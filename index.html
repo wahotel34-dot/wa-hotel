@@ -683,7 +683,6 @@
           if (pData.stay && Array.isArray(pData.stay)) {
             pData.stay.forEach(res => {
               if (res.checkIn && res.checkOut && res.guestName) {
-                // 월 경계 및 연도 변경 시에도 정확히 비교할 수 있도록 타임스탬프 변환
                 let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
                 
@@ -696,7 +695,16 @@
                   });
 
                   if (!alreadyExists) {
-                    let emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+                    // 수정된 부분: 동일한 객실 타입(catKey) 영역 안에서 빈 행을 찾음
+                    let emptyRow = null;
+                    if (res.catKey) {
+                      emptyRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
+                    }
+                    // 만약 해당 타입에 빈 행이 없으면 전체에서 빈 행 탐색
+                    if (!emptyRow) {
+                      emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+                    }
+
                     if (emptyRow) {
                       emptyRow.querySelector('.room-no').value = res.roomNo || '';
                       emptyRow.querySelector('.guest-name').value = res.guestName || '';
