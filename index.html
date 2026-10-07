@@ -39,7 +39,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA2gJqFe4qSorpXzCG5b7Ekf3ou8c4P07Q",
@@ -53,9 +53,11 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    window.FB_DB = db; window.FB_Doc = doc; window.FB_GetDoc = getDoc;
-    window.FB_SetDoc = setDoc; window.FB_DeleteDoc = deleteDoc;
-    window.FB_Collection = collection; window.FB_GetDocs = getDocs;
+    window.FB_DB = db; 
+    window.FB_Doc = doc; 
+    window.FB_GetDoc = getDoc;
+    window.FB_SetDoc = setDoc; 
+    window.FB_DeleteDoc = deleteDoc;
   </script>
 </head>
 <body>
@@ -105,45 +107,3 @@
           <td class="text-right"><span id="stay-sum-price">0</span></td>
           <td class="text-right"><span id="stay-sum-cash">0</span></td>
           <td class="text-right"><span id="stay-sum-card">0</span></td>
-          <td class="text-right"><span id="stay-sum-bank">0</span></td>
-          <td class="text-right"><span id="stay-sum-balance">0</span></td>
-          <td colspan="3"></td>
-        </tr>
-      </tfoot>
-    </table>
-
-    <h3 style="margin-top: 20px; font-size: 18px;">♥ 대실</h3>
-    <table id="rent-table">
-      <thead>
-        <tr>
-          <th style="width: 35px;">순번</th><th style="width: 55px;">호실</th><th style="width: 85px;">카드</th><th style="width: 85px;">현금</th><th style="width: 110px;">사이트</th><th style="width: 80px;">입실시간</th>
-          <th style="width: 15px; border:none; background:white;"></th>
-          <th style="width: 35px;">순번</th><th style="width: 55px;">호실</th><th style="width: 85px;">카드</th><th style="width: 85px;">현금</th><th style="width: 110px;">사이트</th><th style="width: 80px;">입실시간</th>
-        </tr>
-      </thead>
-      <tbody id="rent-tbody"></tbody>
-      <tfoot>
-        <tr class="bg-summary">
-          <td colspan="2"><strong>대실 합계</strong></td>
-          <td>카드: <span id="rent-sum-card">0</span></td>
-          <td>현금: <span id="rent-sum-cash">0</span></td>
-          <td colspan="9"></td>
-        </tr>
-      </tfoot>
-    </table>
-
-    <div style="margin-top: 15px; background: #fff; border: 2px solid #ccc; border-radius: 6px; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center;">
-      <div style="font-weight: bold;">📋 오늘 전체 통합 마감 요약 (숙박 + 대실)</div>
-      <div style="text-align: right; line-height: 1.5;">
-        총 현금: <span id="total-cash-combined" style="font-weight: bold;">0</span>원 &nbsp;|&nbsp; 
-        총 카드: <span id="total-card-combined" style="font-weight: bold;">0</span>원<br>
-        <strong style="color: #0056b3; font-size: 15px;">최종 마감 총합: <span id="total-sum-grand">0</span>원</strong>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    const siteOpts = '<option value="">선택</option><option value="부킹">부킹</option><option value="아고다">아고다</option><option value="익스피디아">익스피디아</option><option value="트립">트립</option><option value="여기어때">여기어때</option><option value="야놀자">야놀자</option><option value="기타">기타</option>';
-  </script>
-</body>
-</html>
