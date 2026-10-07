@@ -147,7 +147,6 @@
   <script>
     const siteOpts = '<option value="">선택</option><option value="부킹">부킹</option><option value="아고다">아고다</option><option value="익스피디아">익스피디아</option><option value="트립">트립</option><option value="여기어때">여기어때</option><option value="야놀자">야놀자</option><option value="기타">기타</option>';
     
-    // 룸 설정
     const roomsPart1 = [
       {no: 1, name: "일반실"}, {no: 2, name: "일반실"}, {no: 3, name: "일반실"},
       {no: 4, type: "header", title: "★ 특실 / 스위트"},
@@ -163,7 +162,6 @@
       const tbody2 = document.getElementById('stay-tbody-2');
       const rentTbody = document.getElementById('rent-tbody');
       
-      // 숙박 1파트 생성
       tbody1.innerHTML = '';
       roomsPart1.forEach((r, idx) => {
         if(r.type === "header") {
@@ -173,13 +171,11 @@
         }
       });
 
-      // 숙박 2파트 생성
       tbody2.innerHTML = '';
       roomsPart2.forEach((r, idx) => {
         tbody2.innerHTML += createStayRow(idx + 1, r.name);
       });
 
-      // 대실 12개 행 생성 (좌우 2열 구조)
       rentTbody.innerHTML = '';
       for(let i=1; i<=6; i++) {
         let r2 = i + 6;
@@ -257,7 +253,6 @@
       document.getElementById('total-sum-grand').innerText = (totalCash + totalCard + sBank).toLocaleString();
     }
 
-    // 날짜 초기화 및 오늘 날짜 기본 지정
     window.addEventListener('DOMContentLoaded', () => {
       initTables();
       const today = new Date().toISOString().split('T')[0];
