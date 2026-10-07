@@ -158,6 +158,7 @@
     let calcTimeout = null;
     let isDeleting = false;
 
+    // 오늘 날짜 구하기
     function getTodayString() {
       const now = new Date();
       const year = now.getFullYear();
@@ -166,6 +167,7 @@
       return `${year}-${month}-${day}`;
     }
 
+    // 다음 날짜 구하기
     function getNextDayString(dateStr) {
       if (!dateStr) return '';
       const d = new Date(dateStr);
@@ -188,6 +190,7 @@
 
       loadDataForDate(dateInput.value);
 
+      // 일지 날짜 변경 시 데이터 로드 및 모든 체크인 날짜 동기화
       dateInput.addEventListener('change', (e) => {
         const selectedDate = e.target.value;
         loadDataForDate(selectedDate);
@@ -221,6 +224,7 @@
         }
       });
 
+      // 엔터키 및 포커스아웃 삭제 기능
       document.body.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && e.target.classList.contains('guest-name')) {
           if (e.target.value.trim() === '') checkAndDelete(e.target);
@@ -232,6 +236,7 @@
         }
       });
 
+      // 체크아웃 클릭 시 체크인 날짜 기준 다음날 자동 채움
       document.body.addEventListener('focusin', (e) => {
         if (e.target.classList.contains('check-out')) {
           if (!e.target.value) {
@@ -542,6 +547,7 @@
         row.querySelectorAll('select').forEach(select => select.value = '');
         row.classList.remove('restay-row');
 
+        // 일지 날짜 변경 시 모든 객실의 체크인 날짜를 동일하게 자동 변경
         const checkInInput = row.querySelector('.check-in');
         if (checkInInput) checkInInput.value = targetDate;
       });
@@ -557,6 +563,7 @@
         selects.forEach(select => select.value = '');
       });
 
+      // 저장된 일일 데이터 불러오기
       const masterData = JSON.parse(localStorage.getItem('wa_hotel_master_db') || '{}');
       if (masterData[targetDate]) {
         const savedStay = masterData[targetDate].stay || [];
@@ -595,6 +602,7 @@
         });
       }
 
+      // 장기 예약/연박 손님 데이터 불러오기
       const reservationList = JSON.parse(localStorage.getItem('wa_hotel_reservations') || '[]');
       reservationList.forEach(res => {
         if (res.checkIn <= targetDate && targetDate <= res.checkOut) {
