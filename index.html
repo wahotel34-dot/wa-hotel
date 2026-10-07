@@ -683,10 +683,11 @@
           if (pData.stay && Array.isArray(pData.stay)) {
             pData.stay.forEach(res => {
               if (res.checkIn && res.checkOut && res.guestName) {
-                let inT = getMidnightTime(res.checkIn);
-                let outT = getMidnightTime(res.checkOut);
+                // 월 경계 및 연도 변경 시에도 정확히 비교할 수 있도록 타임스탬프 변환
+                let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
+                let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
                 
-                if (workTime > inT && workTime < outT) {
+                if (workTime >= inT && workTime < outT) {
                   const alreadyExists = Array.from(rows).some(r => {
                     const name = r.querySelector('.guest-name')?.value.trim();
                     const cin = r.querySelector('.check-in')?.value;
