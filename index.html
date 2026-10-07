@@ -39,7 +39,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA2gJqFe4qSorpXzCG5b7Ekf3ou8c4P07Q",
@@ -56,8 +56,7 @@
     window.FB_DB = db; 
     window.FB_Doc = doc; 
     window.FB_GetDoc = getDoc;
-    window.FB_SetDoc = setDoc; 
-    window.FB_DeleteDoc = deleteDoc;
+    window.FB_SetDoc = setDoc;
   </script>
 </head>
 <body>
@@ -148,89 +147,69 @@
     const siteOpts = '<option value="">선택</option><option value="부킹">부킹</option><option value="아고다">아고다</option><option value="익스피디아">익스피디아</option><option value="트립">트립</option><option value="여기어때">여기어때</option><option value="야놀자">야놀자</option><option value="기타">기타</option>';
     
     const roomsPart1 = [
-      {no: 1, name: "일반실"}, {no: 2, name: "일반실"}, {no: 3, name: "일반실"},
-      {no: 4, type: "header", title: "★ 특실 / 스위트"},
-      {no: 5, name: "특실1"}, {no: 6, name: "특실2"}, {no: 7, name: "스위트"}
+      {name: "일반실"}, {name: "일반실"}, {name: "일반실"},
+      {type: "header", title: "★ 특실 / 스위트"},
+      {name: "특실1"}, {name: "특실2"}, {name: "스위트"}
     ];
-    const roomsPart2 = [
-      {no: 101, name: "101호"}, {no: 102, name: "102호"}, {no: 103, name: "103호"},
-      {no: 104, name: "104호"}, {no: 105, name: "105호"}
-    ];
+    const roomsPart2 = [{name: "101호"}, {name: "102호"}, {name: "103호"}, {name: "104호"}, {name: "105호"}];
 
     function initTables() {
       const tbody1 = document.getElementById('stay-tbody-1');
       const tbody2 = document.getElementById('stay-tbody-2');
       const rentTbody = document.getElementById('rent-tbody');
       
-      tbody1.innerHTML = '';
-      roomsPart1.forEach((r, idx) => {
-        if(r.type === "header") {
-          tbody1.innerHTML += `<tr class="section-header"><td colspan="15">${r.title}</td></tr>`;
-        } else {
-          tbody1.innerHTML += createStayRow(idx + 1, r.name);
-        }
-      });
+      tbody1.innerHTML = roomsPart1.map((r, idx) => r.type === "header" ? 
+        `<tr class="section-header"><td colspan="15">${r.title}</td></tr>` : 
+        createStayRow(idx + 1, r.name)).join('');
 
-      tbody2.innerHTML = '';
-      roomsPart2.forEach((r, idx) => {
-        tbody2.innerHTML += createStayRow(idx + 1, r.name);
-      });
+      tbody2.innerHTML = roomsPart2.map((r, idx) => createStayRow(idx + 1, r.name)).join('');
 
-      rentTbody.innerHTML = '';
+      let rentHtml = '';
       for(let i=1; i<=6; i++) {
         let r2 = i + 6;
-        rentTbody.innerHTML += `
+        rentHtml += `
           <tr>
-            <td>${i}</td>
-            <td><input type="text" class="rent-room" data-idx="${i}" style="width:50px;"></td>
+            <td>${i}</td><td><input type="text" class="rent-room" data-idx="${i}" style="width:50px;"></td>
             <td><input type="number" class="rent-card" data-idx="${i}" value="0" oninput="calcTotals()"></td>
             <td><input type="number" class="rent-cash" data-idx="${i}" value="0" oninput="calcTotals()"></td>
             <td><select class="rent-site" data-idx="${i}">${siteOpts}</select></td>
             <td><input type="text" class="rent-time" data-idx="${i}"></td>
             <td style="border:none; background:white;"></td>
-            <td>${r2}</td>
-            <td><input type="text" class="rent-room" data-idx="${r2}" style="width:50px;"></td>
+            <td>${r2}</td><td><input type="text" class="rent-room" data-idx="${r2}" style="width:50px;"></td>
             <td><input type="number" class="rent-card" data-idx="${r2}" value="0" oninput="calcTotals()"></td>
             <td><input type="number" class="rent-cash" data-idx="${r2}" value="0" oninput="calcTotals()"></td>
             <td><select class="rent-site" data-idx="${r2}">${siteOpts}</select></td>
             <td><input type="text" class="rent-time" data-idx="${r2}"></td>
-          </tr>
-        `;
+          </tr>`;
       }
+      rentTbody.innerHTML = rentHtml;
     }
 
     function createStayRow(no, roomName) {
-      return `
-        <tr>
-          <td>${no}</td>
-          <td><input type="text" class="stay-room" value="${roomName}"></td>
-          <td><input type="text" class="stay-name"></td>
-          <td><input type="date" class="stay-in"></td>
-          <td><input type="date" class="stay-out"></td>
-          <td><input type="text" class="stay-nights" style="width:30px;"></td>
-          <td><input type="text" class="stay-type" style="width:40px;"></td>
-          <td><input type="number" class="stay-price" value="0" oninput="calcTotals()"></td>
-          <td><input type="number" class="stay-cash" value="0" oninput="calcTotals()"></td>
-          <td><input type="number" class="stay-card" value="0" oninput="calcTotals()"></td>
-          <td><input type="number" class="stay-bank" value="0" oninput="calcTotals()"></td>
-          <td><input type="number" class="stay-balance" value="0"></td>
-          <td><select class="stay-site">${siteOpts}</select></td>
-          <td><input type="text" class="stay-memo"></td>
-          <td><input type="text" class="stay-car"></td>
-        </tr>
-      `;
+      return `<tr>
+        <td>${no}</td><td><input type="text" class="stay-room" value="${roomName}"></td>
+        <td><input type="text" class="stay-name"></td><td><input type="date" class="stay-in"></td>
+        <td><input type="date" class="stay-out"></td><td><input type="text" class="stay-nights" style="width:30px;"></td>
+        <td><input type="text" class="stay-type" style="width:40px;"></td>
+        <td><input type="number" class="stay-price" value="0" oninput="calcTotals()"></td>
+        <td><input type="number" class="stay-cash" value="0" oninput="calcTotals()"></td>
+        <td><input type="number" class="stay-card" value="0" oninput="calcTotals()"></td>
+        <td><input type="number" class="stay-bank" value="0" oninput="calcTotals()"></td>
+        <td><input type="number" class="stay-balance" value="0"></td>
+        <td><select class="stay-site">${siteOpts}</select></td>
+        <td><input type="text" class="stay-memo"></td><td><input type="text" class="stay-car"></td>
+      </tr>`;
     }
 
     function calcTotals() {
       let sPrice = 0, sCash = 0, sCard = 0, sBank = 0, sBal = 0;
       document.querySelectorAll('#stay-tbody-1 tr, #stay-tbody-2 tr').forEach(tr => {
         if(tr.classList.contains('section-header')) return;
-        const p = Number(tr.querySelector('.stay-price')?.value) || 0;
-        const c = Number(tr.querySelector('.stay-cash')?.value) || 0;
-        const cd = Number(tr.querySelector('.stay-card')?.value) || 0;
-        const b = Number(tr.querySelector('.stay-bank')?.value) || 0;
-        const bl = Number(tr.querySelector('.stay-balance')?.value) || 0;
-        sPrice += p; sCash += c; sCard += cd; sBank += b; sBal += bl;
+        sPrice += Number(tr.querySelector('.stay-price')?.value) || 0;
+        sCash += Number(tr.querySelector('.stay-cash')?.value) || 0;
+        sCard += Number(tr.querySelector('.stay-card')?.value) || 0;
+        sBank += Number(tr.querySelector('.stay-bank')?.value) || 0;
+        sBal += Number(tr.querySelector('.stay-balance')?.value) || 0;
       });
 
       document.getElementById('stay-sum-price').innerText = sPrice.toLocaleString();
@@ -260,14 +239,11 @@
       dateInput.value = today;
       loadData(today);
 
-      dateInput.addEventListener('change', (e) => {
-        loadData(e.target.value);
-      });
-
+      dateInput.addEventListener('change', (e) => loadData(e.target.value));
       document.getElementById('btn-save').addEventListener('click', saveData);
       document.getElementById('btn-clear').addEventListener('click', clearScreen);
       document.getElementById('btn-reset-all').addEventListener('click', () => {
-        if(confirm('정말 모든 화면을 초기화하시겠습니까?')) initTables();
+        if(confirm('정말 초기화하시겠습니까?')) initTables();
       });
     });
 
@@ -275,8 +251,16 @@
       const dateStr = document.getElementById('work-date').value;
       if(!dateStr) { alert('날짜를 선택해주세요.'); return; }
 
-      const stayData1 = collectTableData('#stay-tbody-1 tr');
-      const stayData2 = collectTableData('#stay-tbody-2 tr');
+      const getRows = (sel) => Array.from(document.querySelectorAll(sel)).map(tr => tr.classList.contains('section-header') ? {type:'header', title:tr.innerText} : {
+        room: tr.querySelector('.stay-room')?.value || '', name: tr.querySelector('.stay-name')?.value || '',
+        in: tr.querySelector('.stay-in')?.value || '', out: tr.querySelector('.stay-out')?.value || '',
+        nights: tr.querySelector('.stay-nights')?.value || '', stype: tr.querySelector('.stay-type')?.value || '',
+        price: tr.querySelector('.stay-price')?.value || '0', cash: tr.querySelector('.stay-cash')?.value || '0',
+        card: tr.querySelector('.stay-card')?.value || '0', bank: tr.querySelector('.stay-bank')?.value || '0',
+        balance: tr.querySelector('.stay-balance')?.value || '0', site: tr.querySelector('.stay-site')?.value || '',
+        memo: tr.querySelector('.stay-memo')?.value || '', car: tr.querySelector('.stay-car')?.value || ''
+      });
+
       const rentData = [];
       for(let i=1; i<=12; i++) {
         rentData.push({
@@ -289,103 +273,47 @@
       }
 
       try {
-        const docRef = window.FB_Doc(window.FB_DB, "hotel_logs", dateStr);
-        await window.FB_SetDoc(docRef, { stay1: stayData1, stay2: stayData2, rent: rentData });
+        await window.FB_SetDoc(window.FB_Doc(window.FB_DB, "hotel_logs", dateStr), { stay1: getRows('#stay-tbody-1 tr'), stay2: getRows('#stay-tbody-2 tr'), rent: rentData });
         alert('저장되었습니다!');
-      } catch(e) {
-        console.error(e);
-        alert('저장 중 오류가 발생했습니다.');
-      }
-    }
-
-    function collectTableData(selector) {
-      const rows = [];
-      document.querySelectorAll(selector).forEach(tr => {
-        if(tr.classList.contains('section-header')) {
-          rows.push({ type: 'header', title: tr.innerText });
-          return;
-        }
-        rows.push({
-          room: tr.querySelector('.stay-room')?.value || '',
-          name: tr.querySelector('.stay-name')?.value || '',
-          in: tr.querySelector('.stay-in')?.value || '',
-          out: tr.querySelector('.stay-out')?.value || '',
-          nights: tr.querySelector('.stay-nights')?.value || '',
-          stype: tr.querySelector('.stay-type')?.value || '',
-          price: tr.querySelector('.stay-price')?.value || '0',
-          cash: tr.querySelector('.stay-cash')?.value || '0',
-          card: tr.querySelector('.stay-card')?.value || '0',
-          bank: tr.querySelector('.stay-bank')?.value || '0',
-          balance: tr.querySelector('.stay-balance')?.value || '0',
-          site: tr.querySelector('.stay-site')?.value || '',
-          memo: tr.querySelector('.stay-memo')?.value || '',
-          car: tr.querySelector('.stay-car')?.value || ''
-        });
-      });
-      return rows;
+      } catch(e) { alert('저장 오류 발생'); }
     }
 
     async function loadData(dateStr) {
       initTables();
       try {
-        const docRef = window.FB_Doc(window.FB_DB, "hotel_logs", dateStr);
-        const snap = await window.FB_GetDoc(docRef);
+        const snap = await window.FB_GetDoc(window.FB_Doc(window.FB_DB, "hotel_logs", dateStr));
         if(snap.exists()) {
           const data = snap.data();
-          if(data.stay1) applyTableData('#stay-tbody-1 tr', data.stay1);
-          if(data.stay2) applyTableData('#stay-tbody-2 tr', data.stay2);
+          const fill = (sel, rows) => {
+            const trs = document.querySelectorAll(sel);
+            rows.forEach((d, idx) => {
+              if(!trs[idx] || d.type === 'header') return;
+              const tr = trs[idx];
+              ['room','name','in','out','nights','stype','price','cash','card','bank','balance','site','memo','car'].forEach(k => {
+                const el = tr.querySelector(`.stay-${k}`);
+                if(el) el.value = d[k] || (k.match(/price|cash|card|bank|balance/) ? '0' : '');
+              });
+            });
+          };
+          if(data.stay1) fill('#stay-tbody-1 tr', data.stay1);
+          if(data.stay2) fill('#stay-tbody-2 tr', data.stay2);
           if(data.rent) {
             data.rent.forEach((item, idx) => {
               let i = idx + 1;
-              const rEl = document.querySelector(`.rent-room[data-idx="${i}"]`);
-              const cEl = document.querySelector(`.rent-card[data-idx="${i}"]`);
-              const caEl = document.querySelector(`.rent-cash[data-idx="${i}"]`);
-              const sEl = document.querySelector(`.rent-site[data-idx="${i}"]`);
-              const tEl = document.querySelector(`.rent-time[data-idx="${i}"]`);
-              if(rEl) rEl.value = item.room;
-              if(cEl) cEl.value = item.card;
-              if(caEl) caEl.value = item.cash;
-              if(sEl) sEl.value = item.site;
-              if(tEl) tEl.value = item.time;
+              ['room','card','cash','site','time'].forEach(k => {
+                const el = document.querySelector(`.rent-${k}[data-idx="${i}"]`);
+                if(el) el.value = item[k] || '';
+              });
             });
           }
           calcTotals();
         }
-      } catch(e) {
-        console.error(e);
-      }
-    }
-
-    function applyTableData(selector, rowsData) {
-      const trs = document.querySelectorAll(selector);
-      rowsData.forEach((data, idx) => {
-        if(!trs[idx]) return;
-        if(data.type === 'header') return;
-        const tr = trs[idx];
-        if(tr.querySelector('.stay-room')) tr.querySelector('.stay-room').value = data.room || '';
-        if(tr.querySelector('.stay-name')) tr.querySelector('.stay-name').value = data.name || '';
-        if(tr.querySelector('.stay-in')) tr.querySelector('.stay-in').value = data.in || '';
-        if(tr.querySelector('.stay-out')) tr.querySelector('.stay-out').value = data.out || '';
-        if(tr.querySelector('.stay-nights')) tr.querySelector('.stay-nights').value = data.nights || '';
-        if(tr.querySelector('.stay-type')) tr.querySelector('.stay-type').value = data.stype || '';
-        if(tr.querySelector('.stay-price')) tr.querySelector('.stay-price').value = data.price || '0';
-        if(tr.querySelector('.stay-cash')) tr.querySelector('.stay-cash').value = data.cash || '0';
-        if(tr.querySelector('.stay-card')) tr.querySelector('.stay-card').value = data.card || '0';
-        if(tr.querySelector('.stay-bank')) tr.querySelector('.stay-bank').value = data.bank || '0';
-        if(tr.querySelector('.stay-balance')) tr.querySelector('.stay-balance').value = data.balance || '0';
-        if(tr.querySelector('.stay-site')) tr.querySelector('.stay-site').value = data.site || '';
-        if(tr.querySelector('.stay-memo')) tr.querySelector('.stay-memo').value = data.memo || '';
-        if(tr.querySelector('.stay-car')) tr.querySelector('.stay-car').value = data.car || '';
-      });
-      calcTotals();
+      } catch(e) {}
     }
 
     function clearScreen() {
-      document.querySelectorAll('input:not([type="date"])').forEach(input => {
-        if(input.type === 'number') input.value = '0';
-        else input.value = '';
-      });
-      document.querySelectorAll('select').forEach(sel => sel.value = '');
+      document.querySelectorAll('input:not([type="date"])').forEach(i => i.value = i.type === 'number' ? '0' : '');
+      document.querySelectorAll('select').forEach(s => s.value = '');
       calcTotals();
     }
   </script>
