@@ -3,645 +3,190 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WA HOTEL 예약 관리 일지 (오버부킹 위험 알림)</title>
+  <title>WA HOTEL 예약 관리 일지 (클라우드 연동형)</title>
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Noto Sans KR', sans-serif; margin: 15px; font-size: 13px; background-color: #f8f9fa; }
     .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .title { font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
     .status { font-size: 12px; color: #28a745; font-weight: bold; }
-    .alert-badge { background-color: #ffc107; color: #333; padding: 3px 8px; border-radius: 4px; font-size: 11px; margin-left: 10px; display: none; }
-    .alert-badge.active { display: inline-block; background-color: #dc3545; color: white; animation: blink 0.8s infinite; font-weight: bold; }
     
-    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-
-    .controls { display: flex; gap: 10px; align-items: center; }
+    .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     .controls label { font-weight: bold; }
-    input, select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; width: 100%; }
-    input[type="date"] { padding: 3px 5px; }
-    button { padding: 5px 12px; font-size: 12px; cursor: pointer; border: none; border-radius: 4px; background-color: #007bff; color: white; font-weight: bold; }
+    
+    #stay-table-1 input, #stay-table-2 select,
+    #stay-table-2 input, #stay-table-1 select { 
+      padding: 6px 4px; 
+      border: 1px solid #ccc; 
+      border-radius: 4px; 
+      font-size: 13px; 
+      height: 36px; 
+    }
+    th { padding: 8px 3px; font-size: 13px; background-color: #e9ecef; font-weight: bold; text-align: center; }
+    td { border: 1px solid #dcdcdc; text-align: center; font-size: 12px; height: 38px; }
+
+    #rent-table input, #rent-table select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; height: 26px; }
+    #rent-table th, #rent-table td { padding: 4px 5px; height: auto; }
+
+    input { width: 100%; }
+    select { width: 100%; }
+    input[type="date"] { width: auto; min-width: 90px; padding: 1px; font-size: 11px; }
+    
+    button { padding: 5px 10px; font-size: 12px; cursor: pointer; border: none; border-radius: 4px; background-color: #007bff; color: white; font-weight: bold; height: 28px; }
     button.clear-btn { background-color: #dc3545; }
+    button.reset-all-btn { background-color: #e83e8c; }
     button.print-btn { background-color: #6c757d; }
     
     table { width: 100%; border-collapse: collapse; margin-bottom: 15px; background: white; }
-    th, td { border: 1px solid #dcdcdc; padding: 4px 5px; text-align: center; font-size: 12px; }
-    th { background-color: #e9ecef; font-weight: bold; }
-    .section-header { background-color: #e2e8f0; font-weight: bold; font-size: 15px; text-align: left; padding: 7px 12px; color: #1a202c; letter-spacing: 0.5px; }
     
-    .guest-name { font-size: 15px !important; font-weight: bold; text-align: center; padding: 5px 8px; }
-    .rent-time { text-align: center; }
-
+    tr.section-header td { 
+      background-color: #e2e6ea !important; 
+      font-weight: 900 !important; 
+      text-align: left !important; 
+      padding-left: 15px !important; 
+      color: #111 !important; 
+      font-size: 16px !important; 
+      height: 42px !important;
+    }
+    
+    .guest-name { font-size: 13px !important; font-weight: bold; text-align: center; }
     .text-left { text-align: left; }
     .text-right { text-align: right; }
-    .bg-summary { background-color: #f8f9fa; font-weight: bold; }
+    .bg-summary { background-color: #f1f3f5 !important; font-weight: bold; }
     .restay-row { background-color: #e6f0ff !important; font-weight: bold; }
-    
+
+    .page-section {
+      background: white;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
     @media print {
-      .controls, .status, .alert-badge { display: none; }
-      body { margin: 0; background: white; }
-      input, select { border: none; background: transparent; -webkit-appearance: none; }
+      @page { size: A4 landscape; margin: 8mm; }
+      body { margin: 0; background: white; font-size: 11px; color: #000; }
+      .controls, .status { display: none !important; }
+      
+      input, select { 
+        border: none !important; background: transparent !important; 
+        -webkit-appearance: none; appearance: none; padding: 0 !important; height: auto !important; font-size: 11px !important;
+      }
+      .page-section { box-shadow: none; padding: 0; margin: 0; page-break-after: always; }
+      table { width: 100% !important; }
+      th, td { border: 1px solid #999 !important; }
+      #stay-table-1 td, #stay-table-2 td { height: 26px !important; }
+      tr.section-header td { background-color: #ddd !important; -webkit-print-color-adjust: exact; font-size: 14px !important; height: 30px !important; }
+      .restay-row { background-color: #f0f4ff !important; -webkit-print-color-adjust: exact; }
+      .bg-summary { background-color: #e9ecef !important; -webkit-print-color-adjust: exact; }
     }
   </style>
+
+  <!-- 파이어베이스 연동 스크립트 -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyA2gJqFe4qSorpXzCG5b7Ekf3ou8c4P07Q",
+      authDomain: "wa-hotel-384c0.firebaseapp.com",
+      databaseURL: "https://wa-hotel-384c0-default-rtdb.firebaseio.com",
+      projectId: "wa-hotel-384c0",
+      storageBucket: "wa-hotel-384c0.firebasestorage.app",
+      messagingSenderId: "994582437050",
+      appId: "1:994582437050:web:fc846eebe8fa8ab0023683",
+      measurementId: "G-FJSMWYK51Z"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    window.FB_DB = db;
+    window.FB_Doc = doc;
+    window.FB_GetDoc = getDoc;
+    window.FB_SetDoc = setDoc;
+    window.FB_DeleteDoc = deleteDoc;
+    window.FB_Collection = collection;
+    window.FB_GetDocs = getDocs;
+  </script>
 </head>
 <body>
 
   <div class="header-container">
     <div class="title">
       WA HOTEL 예약 관리 일지 
-      <span class="status" id="system-status">🟢 정상 운영 중</span>
-      <span id="alert-box" class="alert-badge">⚠️ [오버부킹 위험] 긴급 경고!</span>
+      <span class="status" id="system-status">🟢 클라우드 모드</span>
     </div>
     <div class="controls">
       <label for="work-date">일지 날짜:</label>
-      <input type="date" id="work-date" autocomplete="off" style="width: 130px;">
-      <button id="btn-save">💾 일지 저장</button>
-      <button id="btn-clear" class="clear-btn">🗑️ 화면 비우기</button>
-      <button id="btn-print" class="print-btn" onclick="window.print()">🖨️ 일지 인쇄</button>
+      <input type="date" id="work-date" style="height: 28px;">
+      
+      <button id="btn-save">💾 저장</button>
+      <button id="btn-clear" class="clear-btn">🗑️ 화면비움</button>
+      <button id="btn-reset-all" class="reset-all-btn">🧹 현재일지 초기화</button>
+      <button id="btn-print" class="print-btn" onclick="window.print()">🖨️ 인쇄</button>
     </div>
   </div>
 
-  <!-- 숙박 테이블 -->
-  <table id="stay-table">
-    <thead>
-      <tr>
-        <th style="width: 35px;">NO</th>
-        <th style="width: 50px;">호실</th>
-        <th style="width: 260px; min-width: 260px; font-size: 15px;">예약자(이름)</th>
-        <th style="width: 110px;">체크인</th>
-        <th style="width: 110px;">체크아웃</th>
-        <th style="width: 45px;">연박</th>
-        <th style="width: 60px;">구분</th>
-        <th style="width: 80px;">요금</th>
-        <th style="width: 80px;">현금</th>
-        <th style="width: 80px;">카드</th>
-        <th style="width: 80px;">계좌</th>
-        <th style="width: 80px;">잔액</th>
-        <th style="width: 90px;">사이트</th>
-        <th>연락처 · 비고</th>
-        <th style="width: 80px;">차량</th>
-      </tr>
-    </thead>
-    <tbody id="stay-tbody">
-      <!-- 자바스크립트로 자동 생성됩니다 -->
-    </tbody>
-    <tfoot>
-      <tr class="bg-summary">
-        <td colspan="7" class="text-right"><strong>숙박 합계 (현금 / 카드 분리)</strong></td>
-        <td id="stay-sum-price" class="text-right">0</td>
-        <td id="stay-sum-cash" class="text-right">0</td>
-        <td id="stay-sum-card" class="text-right">0</td>
-        <td id="stay-sum-bank" class="text-right">0</td>
-        <td id="stay-sum-balance" class="text-right">0</td>
-        <td colspan="3" class="text-left" style="font-size: 11px; background: #e9ecef; padding-left: 8px;">
-          현금: <span id="total-cash-combined">0</span>원<br>
-          카드: <span id="total-card-combined">0</span>원<br>
-          <strong style="color: #0056b3;">총합: <span id="total-sum-grand">0</span>원</strong>
-        </td>
-      </tr>
-    </tfoot>
-  </table>
-
-  <!-- 대실 테이블 -->
-  <h3>♥ 대 실</h3>
-  <table id="rent-table">
-    <thead>
-      <tr>
-        <th style="width: 35px;">순번</th>
-        <th style="width: 60px;">호실</th>
-        <th style="width: 80px;">카드</th>
-        <th style="width: 80px;">현금</th>
-        <th style="width: 90px;">사이트</th>
-        <th style="width: 70px;">입실시간</th>
-        <th style="width: 15px; border:none; background:white;"></th>
-        <th style="width: 35px;">순번</th>
-        <th style="width: 60px;">호실</th>
-        <th style="width: 80px;">카드</th>
-        <th style="width: 80px;">현금</th>
-        <th style="width: 90px;">사이트</th>
-        <th style="width: 70px;">입실시간</th>
-      </tr>
-    </thead>
-    <tbody id="rent-tbody">
-      <!-- 자바스크립트로 자동 생성됩니다 -->
-    </tbody>
-    <tfoot>
-      <tr class="bg-summary">
-        <td colspan="2"><strong>대실 합계</strong></td>
-        <td>카드: <span id="rent-sum-card">0</span></td>
-        <td>현금: <span id="rent-sum-cash">0</span></td>
-        <td colspan="9"></td>
-      </tr>
-    </tfoot>
-  </table>
-
-  <script>
-    const roomCategories = [
-      { name: "♥ 스탠다드더블 (총 13실)", start: 1, count: 13, type: "std_double" },
-      { name: "♥ 디럭스더블 (총 7실)", start: 14, count: 7, type: "dlx_double" },
-      { name: "♥ 스탠다드 트윈 (총 6실)", start: 21, count: 6, type: "std_twin" },
-      { name: "♥ 디럭스 트윈 (총 8실)", start: 27, count: 8, type: "dlx_twin" },
-      { name: "♥ 슈페리어 더블 (총 7실)", start: 35, count: 7, type: "sup_double" }
-    ];
-
-    const siteOptions = `
-      <option value="">(선택)</option>
-      <option value="야놀자">야놀자</option>
-      <option value="여기어때">여기어때</option>
-      <option value="부킹">부킹</option>
-      <option value="아고다">아고다</option>
-      <option value="트립">트립</option>
-      <option value="익스피디아">익스피디아</option>
-      <option value="쿠팡">쿠팡</option>
-      <option value="기타">기타</option>
-    `;
-
-    let calcTimeout = null;
-    let isDeleting = false;
-
-    // 오늘 날짜 구하기
-    function getTodayString() {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-
-    // 다음 날짜 구하기
-    function getNextDayString(dateStr) {
-      if (!dateStr) return '';
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return '';
-      d.setDate(d.getDate() + 1);
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-      const dateInput = document.getElementById('work-date');
-      const today = getTodayString();
-      
-      dateInput.value = today;
-
-      buildStayTable();
-      buildRentTable();
-
-      loadDataForDate(dateInput.value);
-
-      // 일지 날짜 변경 시 데이터 로드 및 모든 체크인 날짜 동기화
-      dateInput.addEventListener('change', (e) => {
-        const selectedDate = e.target.value;
-        loadDataForDate(selectedDate);
-      });
-
-      document.body.addEventListener('input', (e) => {
-        if (e.target.classList.contains('calc-trigger')) {
-          let rawValue = e.target.value.replace(/[^0-9]/g, '');
-          e.target.value = rawValue ? Number(rawValue).toLocaleString() : '';
-          clearTimeout(calcTimeout);
-          calcTimeout = setTimeout(calculateTotals, 100);
-        }
-
-        if (e.target.classList.contains('check-in') || e.target.classList.contains('check-out') || e.target.classList.contains('guest-name')) {
-          updateStayCalculations();
-        }
-
-        if (e.target.classList.contains('guest-name') && e.target.value.trim() === '') {
-          const row = e.target.closest('tr');
-          clearRowInputs(row);
-          saveData();
-        }
-
-        checkReservationAlerts();
-        saveData();
-      });
-
-      document.body.addEventListener('change', (e) => {
-        if (e.target.tagName === 'SELECT' || e.target.classList.contains('calc-trigger') || e.target.type === 'date') {
-          saveData();
-        }
-      });
-
-      // 엔터키 및 포커스아웃 삭제 기능
-      document.body.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && e.target.classList.contains('guest-name')) {
-          if (e.target.value.trim() === '') checkAndDelete(e.target);
-        }
-      });
-      document.body.addEventListener('focusout', (e) => {
-        if (e.target.classList.contains('guest-name')) {
-          if (e.target.value.trim() === '') checkAndDelete(e.target);
-        }
-      });
-
-      // 체크아웃 클릭 시 체크인 날짜 기준 다음날 자동 채움
-      document.body.addEventListener('focusin', (e) => {
-        if (e.target.classList.contains('check-out')) {
-          if (!e.target.value) {
-            const row = e.target.closest('tr');
-            const checkInVal = row.querySelector('.check-in').value;
-            const baseDate = checkInVal || document.getElementById('work-date').value;
-            e.target.value = getNextDayString(baseDate);
-            updateStayCalculations();
-            saveData();
-          }
-        }
-      });
-    });
-
-    function clearRowInputs(row) {
-      row.querySelectorAll('input').forEach(input => input.value = '');
-      row.querySelectorAll('select').forEach(select => select.value = '');
-      row.classList.remove('restay-row');
-      
-      const workDateVal = document.getElementById('work-date').value;
-      const checkInInput = row.querySelector('.check-in');
-      if (workDateVal && checkInInput) {
-        checkInInput.value = workDateVal;
-      }
-
-      updateStayCalculations();
-      calculateTotals();
-      checkReservationAlerts();
-    }
-
-    function checkAndDelete(inputElem) {
-      if (isDeleting) return;
-      const row = inputElem.closest('tr');
-      const rowNo = row.getAttribute('data-row');
-      
-      clearRowInputs(row);
-
-      isDeleting = true;
-      deleteReservationAndRestay(rowNo, row);
-      setTimeout(() => { isDeleting = false; }, 300);
-    }
-
-    function parseAmount(val) {
-      if (!val) return 0;
-      return Number(String(val).replace(/[^0-9]/g, '')) || 0;
-    }
-
-    function buildStayTable() {
-      const tbody = document.getElementById('stay-tbody');
-      let html = '';
-      let rowNum = 1;
-
-      roomCategories.forEach(cat => {
-        html += `<tr class="section-header" data-category="${cat.type}"><td colspan="15">${cat.name}</td></tr>`;
-        for (let i = 0; i < cat.count; i++) {
-          html += `
-            <tr data-row="${rowNum}" data-category="${cat.type}">
-              <td>${rowNum}</td>
-              <td><input type="text" class="room-no"></td>
-              <td><input type="text" class="guest-name"></td>
-              <td><input type="date" class="check-in"></td>
-              <td><input type="date" class="check-out"></td>
-              <td><input type="text" class="stay-days" style="text-align:center;"></td>
-              <td><input type="text" class="room-type" style="text-align:center;"></td>
-              <td><input type="text" class="price calc-trigger text-right"></td>
-              <td><input type="text" class="cash calc-trigger text-right"></td>
-              <td><input type="text" class="card calc-trigger text-right"></td>
-              <td><input type="text" class="bank calc-trigger text-right"></td>
-              <td class="balance text-right">0</td>
-              <td><select class="site">${siteOptions}</select></td>
-              <td><input type="text" class="note"></td>
-              <td><input type="text" class="car"></td>
-            </tr>
-          `;
-          rowNum++;
-        }
-      });
-      tbody.innerHTML = html;
-    }
-
-    function buildRentTable() {
-      const tbody = document.getElementById('rent-tbody');
-      let html = '';
-      for (let i = 1; i <= 10; i++) {
-        html += `
-          <tr>
-            <td>${i}</td>
-            <td><input type="text" class="rent-room"></td>
-            <td><input type="text" class="rent-card calc-trigger text-right"></td>
-            <td><input type="text" class="rent-cash calc-trigger text-right"></td>
-            <td><select class="rent-site">${siteOptions}</select></td>
-            <td><input type="text" class="rent-time" value=" : " placeholder=" : "></td>
-            <td style="border:none;"></td>
-            <td>${i + 10}</td>
-            <td><input type="text" class="rent-room"></td>
-            <td><input type="text" class="rent-card calc-trigger text-right"></td>
-            <td><input type="text" class="rent-cash calc-trigger text-right"></td>
-            <td><select class="rent-site">${siteOptions}</select></td>
-            <td><input type="text" class="rent-time" value=" : " placeholder=" : "></td>
-          </tr>
-        `;
-      }
-      tbody.innerHTML = html;
-    }
-
-    function updateStayCalculations() {
-      const workDate = document.getElementById('work-date').value;
-      if (!workDate) return;
-
-      const stayRows = document.querySelectorAll('#stay-tbody tr:not(.section-header)');
-      stayRows.forEach(row => {
-        const guestNameVal = row.querySelector('.guest-name')?.value.trim();
-        const checkInVal = row.querySelector('.check-in')?.value;
-        const checkOutVal = row.querySelector('.check-out')?.value;
-        const stayDaysInput = row.querySelector('.stay-days');
-        const roomTypeInput = row.querySelector('.room-type');
-
-        if (guestNameVal && checkInVal && checkOutVal) {
-          const inDate = new Date(checkInVal);
-          const outDate = new Date(checkOutVal);
-          const diffDays = Math.ceil((outDate - inDate) / (1000 * 60 * 60 * 24));
-
-          if (workDate === checkInVal) {
-            if (stayDaysInput) stayDaysInput.value = diffDays > 1 ? diffDays : '';
-            if (roomTypeInput) roomTypeInput.value = '';
-            row.classList.remove('restay-row');
-          } 
-          else if (checkInVal < workDate && workDate < checkOutVal) {
-            if (stayDaysInput) stayDaysInput.value = '';
-            if (roomTypeInput) roomTypeInput.value = '재숙';
-            row.classList.add('restay-row');
-          } 
-          else {
-            if (stayDaysInput) stayDaysInput.value = '';
-            if (roomTypeInput) roomTypeInput.value = '';
-            row.classList.remove('restay-row');
-          }
-        } else {
-          if (stayDaysInput) stayDaysInput.value = '';
-          if (roomTypeInput) roomTypeInput.value = '';
-          row.classList.remove('restay-row');
-        }
-      });
-      checkReservationAlerts();
-    }
-
-    let lastAlertState = ""; 
-    function checkReservationAlerts() {
-      let stdDoubleCount = 0; let dlxDoubleCount = 0; 
-      let stdTwinCount = 0;   let dlxTwinCount = 0;   
-
-      const stayRows = document.querySelectorAll('#stay-tbody tr:not(.section-header)');
-      stayRows.forEach(row => {
-        const guestName = row.querySelector('.guest-name')?.value.trim();
-        const rowNo = parseInt(row.getAttribute('data-row'));
-
-        if (guestName !== '') {
-          if (rowNo >= 1 && rowNo <= 13) stdDoubleCount++;
-          else if (rowNo >= 14 && rowNo <= 20) dlxDoubleCount++;
-          else if (rowNo >= 21 && rowNo <= 26) stdTwinCount++;
-          else if (rowNo >= 27 && rowNo <= 34) dlxTwinCount++;
-        }
-      });
-
-      const doubleTotal = stdDoubleCount + dlxDoubleCount; 
-      const twinTotal = stdTwinCount + dlxTwinCount;       
-
-      let alertMessages = [];
-      if (doubleTotal >= 19) alertMessages.push(`⚠️ [오버부킹 위험] 더블 예약이 ${doubleTotal}개에 도달했습니다!`);
-      if (twinTotal >= 12) alertMessages.push(`⚠️ [오버부킹 위험] 트윈 예약이 ${twinTotal}개에 도달했습니다!`);
-
-      const alertBox = document.getElementById('alert-box');
-      const currentAlertState = alertMessages.join('|');
-
-      if (alertMessages.length > 0) {
-        alertBox.classList.add('active');
-        alertBox.textContent = `⚠️ 경고 발생 (${alertMessages.length}건)`;
-        if (currentAlertState !== lastAlertState) {
-          lastAlertState = currentAlertState;
-          alert(alertMessages.join('\n\n'));
-        }
-      } else {
-        alertBox.classList.remove('active');
-        lastAlertState = "";
-      }
-    }
-
-    function calculateTotals() {
-      let stayPrice = 0, stayCash = 0, stayCard = 0, stayBank = 0, stayBalance = 0;
-
-      const stayRows = document.querySelectorAll('#stay-tbody tr:not(.section-header)');
-      stayRows.forEach(row => {
-        const p = parseAmount(row.querySelector('.price')?.value);
-        const c = parseAmount(row.querySelector('.cash')?.value);
-        const cd = parseAmount(row.querySelector('.card')?.value);
-        const b = parseAmount(row.querySelector('.bank')?.value);
-
-        const bal = p - (c + cd + b);
-        const balCell = row.querySelector('.balance');
-        if (balCell) balCell.textContent = bal.toLocaleString();
-
-        stayPrice += p; stayCash += c; stayCard += cd; stayBank += b; stayBalance += bal;
-      });
-
-      let rentCard = 0, rentCash = 0;
-      document.querySelectorAll('.rent-card').forEach(input => rentCard += parseAmount(input.value));
-      document.querySelectorAll('.rent-cash').forEach(input => rentCash += parseAmount(input.value));
-
-      document.getElementById('rent-sum-card').textContent = rentCard.toLocaleString();
-      document.getElementById('rent-sum-cash').textContent = rentCash.toLocaleString();
-      document.getElementById('stay-sum-price').textContent = stayPrice.toLocaleString();
-      document.getElementById('stay-sum-cash').textContent = stayCash.toLocaleString();
-      document.getElementById('stay-sum-card').textContent = stayCard.toLocaleString();
-      document.getElementById('stay-sum-bank').textContent = stayBank.toLocaleString();
-      document.getElementById('stay-sum-balance').textContent = stayBalance.toLocaleString();
-
-      const totalCashCombined = stayCash + rentCash;
-      const totalCardCombined = stayCard + rentCard;
-      const grandTotalSum = totalCashCombined + totalCardCombined + stayBank;
-
-      document.getElementById('total-cash-combined').textContent = totalCashCombined.toLocaleString();
-      document.getElementById('total-card-combined').textContent = totalCardCombined.toLocaleString();
-      document.getElementById('total-sum-grand').textContent = grandTotalSum.toLocaleString();
-    }
-
-    function deleteReservationAndRestay(rowNo, rowElement) {
-      if (!confirm(`NO ${rowNo}번 행의 예약을 취소 처리하시겠습니까?`)) return;
-      clearRowInputs(rowElement);
-
-      let reservationList = JSON.parse(localStorage.getItem('wa_hotel_reservations') || '[]');
-      reservationList = reservationList.filter(r => String(r.rowNo) !== String(rowNo));
-      localStorage.setItem('wa_hotel_reservations', JSON.stringify(reservationList));
-
-      let masterData = JSON.parse(localStorage.getItem('wa_hotel_master_db') || '{}');
-      Object.keys(masterData).forEach(dateKey => {
-        if (masterData[dateKey].stay) {
-          masterData[dateKey].stay = masterData[dateKey].stay.map(item => {
-            if (String(item.rowNo) === String(rowNo)) {
-              return { rowNo: rowNo, roomNo: '', guestName: '', checkIn: '', checkOut: '', stayDays: '', roomType: '', price: '', cash: '', card: '', bank: '', site: '', note: '', car: '' };
-            }
-            return item;
-          });
-        }
-      });
-      localStorage.setItem('wa_hotel_master_db', JSON.stringify(masterData));
-
-      saveData();
-      alert('삭제 완료되었습니다.');
-    }
-
-    function saveData() {
-      const currentDate = document.getElementById('work-date').value;
-      if (!currentDate) return;
-
-      let masterData = JSON.parse(localStorage.getItem('wa_hotel_master_db') || '{}');
-      let reservationList = JSON.parse(localStorage.getItem('wa_hotel_reservations') || '[]');
-
-      const currentStay = [];
-      document.querySelectorAll('#stay-tbody tr:not(.section-header)').forEach(row => {
-        const rowData = {
-          rowNo: row.getAttribute('data-row'),
-          roomNo: row.querySelector('.room-no')?.value || '',
-          guestName: row.querySelector('.guest-name')?.value || '',
-          checkIn: row.querySelector('.check-in')?.value || '',
-          checkOut: row.querySelector('.check-out')?.value || '',
-          stayDays: row.querySelector('.stay-days')?.value || '',
-          roomType: row.querySelector('.room-type')?.value || '',
-          price: row.querySelector('.price')?.value || '',
-          cash: row.querySelector('.cash')?.value || '',
-          card: row.querySelector('.card')?.value || '',
-          bank: row.querySelector('.bank')?.value || '',
-          site: row.querySelector('.site')?.value || '',
-          note: row.querySelector('.note')?.value || '',
-          car: row.querySelector('.car')?.value || ''
-        };
-        currentStay.push(rowData);
-
-        if (rowData.guestName.trim() !== '' && rowData.checkIn && rowData.checkOut) {
-          const existingIdx = reservationList.findIndex(r => String(r.rowNo) === String(rowData.rowNo));
-          if (existingIdx >= 0) reservationList[existingIdx] = rowData;
-          else reservationList.push(rowData);
-        }
-      });
-
-      const currentRent = [];
-      document.querySelectorAll('#rent-tbody tr').forEach(row => {
-        const inputs = row.querySelectorAll('input');
-        const selects = row.querySelectorAll('select');
-        if (inputs.length >= 6 && selects.length >= 2) {
-          currentRent.push({
-            room1: inputs[0].value, card1: inputs[1].value, cash1: inputs[2].value, site1: selects[0].value, time1: inputs[3].value,
-            room2: inputs[4].value, card2: inputs[5].value, cash2: inputs[6].value, site2: selects[1].value, time2: inputs[7].value
-          });
-        }
-      });
-
-      masterData[currentDate] = { stay: currentStay, rent: currentRent };
-      localStorage.setItem('wa_hotel_master_db', JSON.stringify(masterData));
-      localStorage.setItem('wa_hotel_reservations', JSON.stringify(reservationList));
-    }
-
-    function loadDataForDate(targetDate) {
-      if (!targetDate) return;
-
-      const rows = document.querySelectorAll('#stay-tbody tr:not(.section-header)');
-      rows.forEach(row => {
-        row.querySelectorAll('input').forEach(input => input.value = '');
-        row.querySelectorAll('select').forEach(select => select.value = '');
-        row.classList.remove('restay-row');
-
-        // 일지 날짜 변경 시 모든 객실의 체크인 날짜를 동일하게 자동 변경
-        const checkInInput = row.querySelector('.check-in');
-        if (checkInInput) checkInInput.value = targetDate;
-      });
-
-      const rentRows = document.querySelectorAll('#rent-tbody tr');
-      rentRows.forEach(row => {
-        const inputs = row.querySelectorAll('input');
-        const selects = row.querySelectorAll('select');
-        inputs.forEach((input) => {
-          if (input.classList.contains('rent-time')) input.value = ' : ';
-          else input.value = '';
-        });
-        selects.forEach(select => select.value = '');
-      });
-
-      // 저장된 일일 데이터 불러오기
-      const masterData = JSON.parse(localStorage.getItem('wa_hotel_master_db') || '{}');
-      if (masterData[targetDate]) {
-        const savedStay = masterData[targetDate].stay || [];
-        savedStay.forEach(item => {
-          const targetRow = Array.from(rows).find(r => String(r.getAttribute('data-row')) === String(item.rowNo));
-          if (targetRow) {
-            if(item.roomNo) targetRow.querySelector('.room-no').value = item.roomNo;
-            if(item.guestName) targetRow.querySelector('.guest-name').value = item.guestName;
-            if(item.checkIn) targetRow.querySelector('.check-in').value = item.checkIn;
-            if(item.checkOut) targetRow.querySelector('.check-out').value = item.checkOut;
-            if(item.stayDays) targetRow.querySelector('.stay-days').value = item.stayDays;
-            if(item.roomType) targetRow.querySelector('.room-type').value = item.roomType;
-            if(item.price) targetRow.querySelector('.price').value = item.price;
-            if(item.cash) targetRow.querySelector('.cash').value = item.cash;
-            if(item.card) targetRow.querySelector('.card').value = item.card;
-            if(item.bank) targetRow.querySelector('.bank').value = item.bank;
-            if(item.site) targetRow.querySelector('.site').value = item.site;
-            if(item.note) targetRow.querySelector('.note').value = item.note;
-            if(item.car) targetRow.querySelector('.car').value = item.car;
-          }
-        });
-
-        const savedRent = masterData[targetDate].rent || [];
-        savedRent.forEach((item, idx) => {
-          if (rentRows[idx]) {
-            const inputs = rentRows[idx].querySelectorAll('input');
-            const selects = rentRows[idx].querySelectorAll('select');
-            if (inputs.length >= 8 && selects.length >= 2) {
-              inputs[0].value = item.room1 || ''; inputs[1].value = item.card1 || '';
-              inputs[2].value = item.cash1 || ''; selects[0].value = item.site1 || '';
-              inputs[3].value = item.time1 || ' : '; inputs[4].value = item.room2 || '';
-              inputs[5].value = item.card2 || ''; inputs[6].value = item.cash2 || '';
-              selects[1].value = item.site2 || ''; inputs[7].value = item.time2 || ' : ';
-            }
-          }
-        });
-      }
-
-      // 장기 예약/연박 손님 데이터 불러오기
-      const reservationList = JSON.parse(localStorage.getItem('wa_hotel_reservations') || '[]');
-      reservationList.forEach(res => {
-        if (res.checkIn <= targetDate && targetDate <= res.checkOut) {
-          const targetRow = Array.from(rows).find(row => String(row.getAttribute('data-row')) === String(res.rowNo));
-          if (targetRow) {
-            targetRow.querySelector('.room-no').value = res.roomNo || '';
-            targetRow.querySelector('.guest-name').value = res.guestName || '';
-            targetRow.querySelector('.check-in').value = res.checkIn || '';
-            targetRow.querySelector('.check-out').value = res.checkOut || '';
-            targetRow.querySelector('.site').value = res.site || '';
-            if (targetDate <= res.checkOut) targetRow.querySelector('.car').value = res.car || '';
-          }
-        }
-      });
-
-      updateStayCalculations();
-      calculateTotals();
-      checkReservationAlerts();
-    }
-
-    document.getElementById('btn-save').addEventListener('click', () => {
-      saveData();
-      alert('일지가 안전하게 저장되었습니다.');
-    });
-
-    document.getElementById('btn-clear').addEventListener('click', () => {
-      if (confirm('현재 화면의 모든 입력 항목을 지우시겠습니까?')) {
-        const rows = document.querySelectorAll('#stay-tbody tr:not(.section-header)');
-        rows.forEach(row => clearRowInputs(row));
-
-        document.querySelectorAll('#rent-tbody input').forEach(input => {
-          if (input.classList.contains('rent-time')) input.value = ' : ';
-          else input.value = '';
-        });
-        document.querySelectorAll('#rent-tbody select').forEach(select => select.value = '');
-        
-        saveData();
-      }
-    });
-  </script>
-</body>
-</html>
+  <div class="page-section">
+    <table id="stay-table-1">
+      <thead>
+        <tr>
+          <th style="width: 30px;">NO</th>
+          <th style="width: 42px;">호실</th>
+          <th style="width: 155px; font-size: 14px;">예약자(이름)</th>
+          <th style="width: 72px;">체크인</th>
+          <th style="width: 72px;">체크아웃</th>
+          <th style="width: 30px;">연박</th>
+          <th style="width: 40px;">구분</th>
+          <th style="width: 65px;">요금</th>
+          <th style="width: 60px;">현금</th>
+          <th style="width: 60px;">카드</th>
+          <th style="width: 60px;">계좌</th>
+          <th style="width: 60px;">잔액</th>
+          <th style="width: 75px;">사이트</th>
+          <th>연락처 · 비고</th>
+          <th style="width: 45px;">차량</th>
+        </tr>
+      </thead>
+      <tbody id="stay-tbody-1"></tbody>
+    </table>
+  </div>
+
+  <div class="page-section">
+    <table id="stay-table-2">
+      <thead>
+        <tr>
+          <th style="width: 30px;">NO</th>
+          <th style="width: 42px;">호실</th>
+          <th style="width: 155px; font-size: 14px;">예약자(이름)</th>
+          <th style="width: 72px;">체크인</th>
+          <th style="width: 72px;">체크아웃</th>
+          <th style="width: 30px;">연박</th>
+          <th style="width: 40px;">구분</th>
+          <th style="width: 65px;">요금</th>
+          <th style="width: 60px;">현금</th>
+          <th style="width: 60px;">카드</th>
+          <th style="width: 60px;">계좌</th>
+          <th style="width: 60px;">잔액</th>
+          <th style="width: 75px;">사이트</th>
+          <th>연락처 · 비고</th>
+          <th style="width: 45px;">차량</th>
+        </tr>
+      </thead>
+      <tbody id="stay-tbody-2"></tbody>
+      <tfoot>
+        <tr class="bg-summary">
+          <td colspan="7"><strong>전체 숙박 합계</strong></td>
+          <td class="text-right"><span id="stay-sum-price">0</span></td>
+          <td class="text-right"><span id="stay-sum-cash">0</span></td>
+          <td class="text-right"><span id="stay-sum-card">0</span></td>
+          <td class="text-right"><span id="stay-sum-bank">0</span></td>
+          <td class="text-right"><span id="stay-sum-balance">0</span></td>
+          <td colspan="3"></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div style="display:none;">
+      <span id="p1-sum-price">0</span><span id="p1-sum-cash">0</span><span id="p1-
