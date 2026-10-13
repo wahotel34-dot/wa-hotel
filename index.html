@@ -639,14 +639,13 @@
       const workTime = getMidnightTime(targetDate);
 
       try {
-        // 1. 현재 날짜에 직접 저장된 데이터 불러오기 (호실 및 고유 인덱스 순서 매칭)
+        // 1. 현재 날짜에 직접 저장된 데이터 불러오기
         const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data.stay && Array.isArray(data.stay)) {
             data.stay.forEach((res) => {
               let targetRow = null;
-              // 저장된 호실 번호나 객실 타입이 일치하고 아직 채워지지 않은 빈 행을 완벽히 매칭
               if (res.catKey) {
                 targetRow = Array.from(rows).find(r => 
                   r.getAttribute('data-cat-key') === res.catKey && 
@@ -697,7 +696,6 @@
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
                 
                 if (workTime >= inT && workTime < outT) {
-                  // 다중 객실(같은 이름 여러 개)을 각각 고유하게 구별하기 위해 호실번호까지 조합한 고유키 활용
                   const resUniqueKey = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}_${res.roomNo}`;
 
                   const alreadyExists = Array.from(rows).some(r => {
@@ -710,7 +708,6 @@
                   });
 
                   if (!alreadyExists) {
-                    // 동일한 방 번호(roomNo)가 이미 화면에 수동 입력되어 있는지 추가로 확인하여 중복 방지
                     const roomAlreadyUsed = Array.from(rows).some(r => r.querySelector('.room-no')?.value.trim() === res.roomNo.trim());
 
                     if (!roomAlreadyUsed) {
