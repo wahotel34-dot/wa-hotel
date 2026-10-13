@@ -85,7 +85,7 @@
   <!-- 파이어베이스 연동 스크립트 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA2gJqFe4qSorpXzCG5b7Ekf3ou8c4P07Q",
@@ -106,8 +106,6 @@
     window.FB_GetDoc = getDoc;
     window.FB_SetDoc = setDoc;
     window.FB_DeleteDoc = deleteDoc;
-    window.FB_Collection = collection;
-    window.FB_GetDocs = getDocs;
   </script>
 </head>
 <body>
@@ -430,11 +428,9 @@
         const roomTypeInput = row.querySelector('.room-type');
 
         if (!guestNameVal || !checkInVal || !checkOutVal) {
-          if (!row.dataset.autoSynced) {
-            if (stayDaysInput) stayDaysInput.value = '';
-            if (roomTypeInput) roomTypeInput.value = '';
-            row.classList.remove('restay-row');
-          }
+          if (stayDaysInput) stayDaysInput.value = '';
+          if (roomTypeInput) roomTypeInput.value = '';
+          row.classList.remove('restay-row');
         } else {
           const inTime = getMidnightTime(checkInVal);
           const outTime = getMidnightTime(checkOutVal);
@@ -560,13 +556,13 @@
       const currentStay = [];
       const stayRows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
       
-      stayRows.forEach(row => {
+      // [수정] 각 행별 고유 순서 인덱스를 부여하여 동일 이름이라도 절대 덮어씌워지지 않고 그대로 저장되도록 보완
+      stayRows.forEach((row, index) => {
         const guestNameVal = row.querySelector('.guest-name')?.value.trim();
         if (!guestNameVal) return;
 
-        if (row.dataset.autoSynced === "true") return;
-
         currentStay.push({
+          rowIndex: index,
           catKey: row.getAttribute('data-cat-key') || '',
           roomNo: row.querySelector('.room-no')?.value || '',
           guestName: guestNameVal,
@@ -618,7 +614,6 @@
         row.querySelectorAll('input').forEach(input => input.value = '');
         row.querySelectorAll('select').forEach(select => select.value = '');
         row.classList.remove('restay-row');
-        delete row.dataset.autoSynced;
       });
 
       const rentRows = document.querySelectorAll('#rent-tbody tr');
@@ -627,13 +622,6 @@
         row.querySelectorAll('select').forEach(select => select.value = '');
       });
 
-      const getMidnightTime = (dateStr) => {
-        const d = new Date(dateStr);
-        d.setHours(0, 0, 0, 0);
-        return d.getTime();
-      };
-      const workTime = getMidnightTime(targetDate);
-
       try {
         const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
         if (docSnap.exists()) {
@@ -641,7 +629,10 @@
           if (data.stay && Array.isArray(data.stay)) {
             data.stay.forEach((res) => {
               let targetRow = null;
-              if (res.catKey) {
+              // [수정] rowIndex가 저장되어 있다면 해당 정확한 위치의 행에 데이터를 배치하여 동일 이름 중복 충돌을 원천 차단
+              if (res.rowIndex !== undefined && rows[res.rowIndex]) {
+                targetRow = rows[res.rowIndex];
+              } else if (res.catKey) {
                 targetRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
               }
               if (!targetRow) {
@@ -675,52 +666,6 @@
             });
           }
         }
-
-        const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
-        querySnapshot.forEach((docSnap) => {
-          if (docSnap.id === targetDate) return;
-          const pData = docSnap.data();
-          if (pData.stay && Array.isArray(pData.stay)) {
-            pData.stay.forEach(res => {
-              if (res.checkIn && res.checkOut && res.guestName) {
-                let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
-                let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
-                
-                if (workTime >= inT && workTime < outT) {
-                  const alreadyExists = Array.from(rows).some(r => {
-                    const name = r.querySelector('.guest-name')?.value.trim();
-                    const cin = r.querySelector('.check-in')?.value;
-                    const cout = r.querySelector('.check-out')?.value;
-                    return name === res.guestName.trim() && cin === res.checkIn && cout === res.checkOut;
-                  });
-
-                  if (!alreadyExists) {
-                    // 수정된 부분: 동일한 객실 타입(catKey) 영역 안에서 빈 행을 찾음
-                    let emptyRow = null;
-                    if (res.catKey) {
-                      emptyRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
-                    }
-                    // 만약 해당 타입에 빈 행이 없으면 전체에서 빈 행 탐색
-                    if (!emptyRow) {
-                      emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
-                    }
-
-                    if (emptyRow) {
-                      emptyRow.querySelector('.room-no').value = res.roomNo || '';
-                      emptyRow.querySelector('.guest-name').value = res.guestName || '';
-                      emptyRow.querySelector('.check-in').value = res.checkIn || '';
-                      emptyRow.querySelector('.check-out').value = res.checkOut || '';
-                      emptyRow.querySelector('.room-type').value = '재숙';
-                      emptyRow.classList.add('restay-row');
-                      emptyRow.dataset.autoSynced = "true";
-                    }
-                  }
-                }
-              }
-            });
-          }
-        });
-
       } catch (err) {
         console.error("데이터 로드 실패:", err);
       }
@@ -742,7 +687,6 @@
           row.querySelectorAll('input').forEach(input => input.value = '');
           row.querySelectorAll('select').forEach(select => select.value = '');
           row.classList.remove('restay-row');
-          delete row.dataset.autoSynced;
         });
         document.querySelectorAll('#rent-tbody input').forEach(input => input.value = input.classList.contains('rent-time') ? ':' : '');
         document.querySelectorAll('#rent-tbody select').forEach(select => select.value = '');
