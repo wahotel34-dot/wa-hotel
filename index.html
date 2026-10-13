@@ -684,7 +684,7 @@
           }
         }
 
-        // 2. 다른 날짜에서 넘어온 재숙(연박) 건 자동 동기화 (불필요한 중복 차단 로직 제거 후 완벽 허용)
+        // 2. 다른 날짜에서 넘어온 재숙(연박) 건 자동 동기화 (오직 동일한 예약 고유키 중복만 방지하고 완벽 허용)
         const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         querySnapshot.forEach((docSnap) => {
           if (docSnap.id === targetDate) return;
@@ -696,10 +696,19 @@
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
                 
                 if (workTime >= inT && workTime < outT) {
-                  // 이미 현재 화면의 동일한 방 번호(roomNo)에 수동 또는 당일 예약으로 채워져 있는지 여부만 체크
-                  const roomAlreadyFilled = Array.from(rows).some(r => r.querySelector('.room-no')?.value.trim() === res.roomNo.trim());
+                  // 동일한 예약(이름 + 체크인 + 체크아웃 + 호실번호)이 화면에 이미 반영되어 있는지 여부만 엄격히 대조
+                  const resUniqueKey = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}_${res.roomNo}`;
 
-                  if (!roomAlreadyFilled) {
+                  const alreadyExists = Array.from(rows).some(r => {
+                    const name = r.querySelector('.guest-name')?.value.trim();
+                    const cin = r.querySelector('.check-in')?.value;
+                    const cout = r.querySelector('.check-out')?.value;
+                    const rno = r.querySelector('.room-no')?.value || '';
+                    const rUniqueKey = `${name}_${cin}_${cout}_${rno}`;
+                    return rUniqueKey === resUniqueKey;
+                  });
+
+                  if (!alreadyExists) {
                     let emptyRow = null;
                     if (res.catKey) {
                       emptyRow = Array.from(rows).find(r => 
