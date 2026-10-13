@@ -442,20 +442,16 @@
 
           if (workTime === inTime) {
             if (stayDaysInput) stayDaysInput.value = diffDays > 1 ? diffDays : '';
-            if (!row.dataset.autoSynced) {
-              if (roomTypeInput) roomTypeInput.value = '';
-              row.classList.remove('restay-row');
-            }
+            if (roomTypeInput) roomTypeInput.value = '';
+            row.classList.remove('restay-row');
           } else if (workTime > inTime && workTime < outTime) {
             if (stayDaysInput) stayDaysInput.value = '';
             if (roomTypeInput) roomTypeInput.value = '재숙';
             row.classList.add('restay-row');
           } else {
-            if (!row.dataset.autoSynced) {
-              if (stayDaysInput) stayDaysInput.value = '';
-              if (roomTypeInput) roomTypeInput.value = '';
-              row.classList.remove('restay-row');
-            }
+            if (stayDaysInput) stayDaysInput.value = '';
+            if (roomTypeInput) roomTypeInput.value = '';
+            row.classList.remove('restay-row');
           }
         }
       });
@@ -568,6 +564,8 @@
         const guestNameVal = row.querySelector('.guest-name')?.value.trim();
         if (!guestNameVal) return;
 
+        if (row.dataset.autoSynced === "true") return;
+
         currentStay.push({
           catKey: row.getAttribute('data-cat-key') || '',
           roomNo: row.querySelector('.room-no')?.value || '',
@@ -599,51 +597,11 @@
       });
 
       try {
-        // [핵심 보완] 저장을 누를 때 현재 날짜뿐만 아니라, 입력된 각 예약의 체크인~체크아웃 기간에 해당하는
-        // 모든 날짜별 문서(hotel_logs/YYYY-MM-DD)에도 해당 예약 정보를 자동으로 똑같이 동기화하여 저장합니다.
         await window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", targetDate), {
           stay: currentStay,
           rent: currentRent,
           updatedAt: new Date().toISOString()
         });
-
-        for (const res of currentStay) {
-          if (res.checkIn && res.checkOut && res.roomNo) {
-            let startD = new Date(res.checkIn);
-            let endD = new Date(res.checkOut);
-            let curr = new Date(startD);
-
-            while (curr < endD) {
-              let dStr = curr.toISOString().split('T')[0];
-              curr.setDate(curr.getDate() + 1);
-
-              if (dStr === targetDate) continue;
-
-              const docRef = window.FB_Doc(db, "hotel_logs", dStr);
-              const docSnap = await window.FB_GetDoc(docRef);
-              let otherStay = [];
-              let otherRent = [];
-              if (docSnap.exists()) {
-                otherStay = docSnap.data().stay || [];
-                otherRent = docSnap.data().rent || [];
-              }
-
-              const idx = otherStay.findIndex(s => s.roomNo === res.roomNo && s.checkIn === res.checkIn && s.checkOut === res.checkOut);
-              if (idx >= 0) {
-                otherStay[idx] = res;
-              } else {
-                otherStay.push(res);
-              }
-
-              await window.FB_SetDoc(docRef, {
-                stay: otherStay,
-                rent: otherRent,
-                updatedAt: new Date().toISOString()
-              });
-            }
-          }
-        }
-
       } catch (err) {
         console.error("저장 실패:", err);
       }
@@ -677,8 +635,6 @@
       const workTime = getMidnightTime(targetDate);
 
       try {
-        // [안전성 확보] 먼저 현재 선택된 날짜의 문서를 불러와 화면을 즉시 채우고,
-        // 동시에 모든 날짜 문서를 훑어서 현재 날짜(workTime)가 체크인~체크아웃 기간에 포함되는 연박 건을 완벽히 가져옵니다.
         const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -686,10 +642,7 @@
             data.stay.forEach((res) => {
               let targetRow = null;
               if (res.catKey) {
-                targetRow = Array.from(rows).find(r => 
-                  r.getAttribute('data-cat-key') === res.catKey && 
-                  !r.querySelector('.guest-name').value
-                );
+                targetRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
               }
               if (!targetRow) {
                 targetRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
@@ -723,35 +676,31 @@
           }
         }
 
-        // 다른 날짜에 입력되어 기간이 겹치는 연박(재숙) 건 추가 검사 및 연동
         const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         querySnapshot.forEach((docSnap) => {
           if (docSnap.id === targetDate) return;
           const pData = docSnap.data();
           if (pData.stay && Array.isArray(pData.stay)) {
             pData.stay.forEach(res => {
-              if (res.roomNo && res.roomNo.trim() !== '' && res.checkIn && res.checkOut && res.guestName) {
+              if (res.checkIn && res.checkOut && res.guestName) {
                 let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
                 
-                if (workTime > inT && workTime < outT) {
-                  const uniqueKey = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}_${res.roomNo}`;
+                if (workTime >= inT && workTime < outT) {
                   const alreadyExists = Array.from(rows).some(r => {
                     const name = r.querySelector('.guest-name')?.value.trim();
                     const cin = r.querySelector('.check-in')?.value;
                     const cout = r.querySelector('.check-out')?.value;
-                    const rno = r.querySelector('.room-no')?.value || '';
-                    return `${name}_${cin}_${cout}_${rno}` === uniqueKey;
+                    return name === res.guestName.trim() && cin === res.checkIn && cout === res.checkOut;
                   });
 
                   if (!alreadyExists) {
+                    // 수정된 부분: 동일한 객실 타입(catKey) 영역 안에서 빈 행을 찾음
                     let emptyRow = null;
                     if (res.catKey) {
-                      emptyRow = Array.from(rows).find(r => 
-                        r.getAttribute('data-cat-key') === res.catKey && 
-                        !r.querySelector('.guest-name').value
-                      );
+                      emptyRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
                     }
+                    // 만약 해당 타입에 빈 행이 없으면 전체에서 빈 행 탐색
                     if (!emptyRow) {
                       emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
                     }
