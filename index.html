@@ -442,20 +442,16 @@
 
           if (workTime === inTime) {
             if (stayDaysInput) stayDaysInput.value = diffDays > 1 ? diffDays : '';
-            if (!row.dataset.autoSynced) {
-              if (roomTypeInput) roomTypeInput.value = '';
-              row.classList.remove('restay-row');
-            }
+            if (roomTypeInput) roomTypeInput.value = '';
+            row.classList.remove('restay-row');
           } else if (workTime > inTime && workTime < outTime) {
             if (stayDaysInput) stayDaysInput.value = '';
             if (roomTypeInput) roomTypeInput.value = '재숙';
             row.classList.add('restay-row');
           } else {
-            if (!row.dataset.autoSynced) {
-              if (stayDaysInput) stayDaysInput.value = '';
-              if (roomTypeInput) roomTypeInput.value = '';
-              row.classList.remove('restay-row');
-            }
+            if (stayDaysInput) stayDaysInput.value = '';
+            if (roomTypeInput) roomTypeInput.value = '';
+            row.classList.remove('restay-row');
           }
         }
       });
@@ -639,7 +635,6 @@
       const workTime = getMidnightTime(targetDate);
 
       try {
-        // 1. 현재 날짜에 직접 저장된 데이터 불러오기
         const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -647,10 +642,7 @@
             data.stay.forEach((res) => {
               let targetRow = null;
               if (res.catKey) {
-                targetRow = Array.from(rows).find(r => 
-                  r.getAttribute('data-cat-key') === res.catKey && 
-                  !r.querySelector('.guest-name').value
-                );
+                targetRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
               }
               if (!targetRow) {
                 targetRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
@@ -684,54 +676,43 @@
           }
         }
 
-        // 2. 다른 날짜에서 넘어온 재숙(연박) 건 자동 동기화 (호실 번호가 기입된 건 각각 독립적으로 적용)
         const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         querySnapshot.forEach((docSnap) => {
           if (docSnap.id === targetDate) return;
           const pData = docSnap.data();
           if (pData.stay && Array.isArray(pData.stay)) {
             pData.stay.forEach(res => {
-              if (res.roomNo && res.roomNo.trim() !== '' && res.checkIn && res.checkOut && res.guestName) {
+              if (res.checkIn && res.checkOut && res.guestName) {
                 let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
                 
                 if (workTime >= inT && workTime < outT) {
-                  const resUniqueKey = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}_${res.roomNo}`;
-
                   const alreadyExists = Array.from(rows).some(r => {
                     const name = r.querySelector('.guest-name')?.value.trim();
                     const cin = r.querySelector('.check-in')?.value;
                     const cout = r.querySelector('.check-out')?.value;
-                    const rno = r.querySelector('.room-no')?.value || '';
-                    const rUniqueKey = `${name}_${cin}_${cout}_${rno}`;
-                    return rUniqueKey === resUniqueKey;
+                    return name === res.guestName.trim() && cin === res.checkIn && cout === res.checkOut;
                   });
 
                   if (!alreadyExists) {
-                    const roomAlreadyUsed = Array.from(rows).some(r => r.querySelector('.room-no')?.value.trim() === res.roomNo.trim());
+                    // 수정된 부분: 동일한 객실 타입(catKey) 영역 안에서 빈 행을 찾음
+                    let emptyRow = null;
+                    if (res.catKey) {
+                      emptyRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
+                    }
+                    // 만약 해당 타입에 빈 행이 없으면 전체에서 빈 행 탐색
+                    if (!emptyRow) {
+                      emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+                    }
 
-                    if (!roomAlreadyUsed) {
-                      let emptyRow = null;
-                      if (res.catKey) {
-                        emptyRow = Array.from(rows).find(r => 
-                          r.getAttribute('data-cat-key') === res.catKey && 
-                          !r.querySelector('.guest-name').value &&
-                          !r.querySelector('.room-no').value
-                        );
-                      }
-                      if (!emptyRow) {
-                        emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value && !r.querySelector('.room-no').value);
-                      }
-
-                      if (emptyRow) {
-                        emptyRow.querySelector('.room-no').value = res.roomNo || '';
-                        emptyRow.querySelector('.guest-name').value = res.guestName || '';
-                        emptyRow.querySelector('.check-in').value = res.checkIn || '';
-                        emptyRow.querySelector('.check-out').value = res.checkOut || '';
-                        emptyRow.querySelector('.room-type').value = '재숙';
-                        emptyRow.classList.add('restay-row');
-                        emptyRow.dataset.autoSynced = "true";
-                      }
+                    if (emptyRow) {
+                      emptyRow.querySelector('.room-no').value = res.roomNo || '';
+                      emptyRow.querySelector('.guest-name').value = res.guestName || '';
+                      emptyRow.querySelector('.check-in').value = res.checkIn || '';
+                      emptyRow.querySelector('.check-out').value = res.checkOut || '';
+                      emptyRow.querySelector('.room-type').value = '재숙';
+                      emptyRow.classList.add('restay-row');
+                      emptyRow.dataset.autoSynced = "true";
                     }
                   }
                 }
