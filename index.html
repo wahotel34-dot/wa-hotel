@@ -601,11 +601,53 @@
       });
 
       try {
+        // 1. 현재 날짜 문서에 저장
         await window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", targetDate), {
           stay: currentStay,
           rent: currentRent,
           updatedAt: new Date().toISOString()
         });
+
+        // 2. 각 예약 건의 체크인 ~ 체크아웃 기간 사이에 있는 모든 날짜 문서에도 해당 예약 정보를 자동으로 전파(동기화)
+        for (const item of currentStay) {
+          if (item.checkIn && item.checkOut) {
+            let startD = new Date(item.checkIn);
+            let endD = new Date(item.checkOut);
+            let curr = new Date(startD);
+
+            while (curr < endD) {
+              let dStr = curr.toISOString().split('T')[0];
+              curr.setDate(curr.getDate() + 1);
+
+              if (dStr === targetDate) continue; // 현재 날짜는 이미 저장했으므로 패스
+
+              const otherDocRef = window.FB_Doc(db, "hotel_logs", dStr);
+              const otherDocSnap = await window.FB_GetDoc(otherDocRef);
+              
+              let otherStay = [];
+              let otherRent = [];
+              if (otherDocSnap.exists()) {
+                otherStay = otherDocSnap.data().stay || [];
+                otherRent = otherDocSnap.data().rent || [];
+              }
+
+              // 이미 해당 날짜에 동일한 방 번호와 예약 정보가 있는지 확인 후 업데이트 또는 추가
+              const existingIdx = otherStay.findIndex(s => s.roomNo === item.roomNo && s.checkIn === item.checkIn && s.checkOut === item.checkOut);
+              if (existingIdx >= 0) {
+                otherStay[existingIdx] = item;
+              } else {
+                otherStay.push(item);
+              }
+
+              await window.FB_SetDoc(otherDocRef, {
+                stay: otherStay,
+                rent: otherRent,
+                updatedAt: new Date().toISOString()
+              });
+            }
+          }
+        }
+
       } catch (err) {
         console.error("저장 실패:", err);
       }
@@ -639,13 +681,18 @@
       const workTime = getMidnightTime(targetDate);
 
       try {
-        // 1. 현재 날짜에 직접 저장된 데이터 불러오기
+        // 1. 현재 날짜에 직접 저장된 데이터 및 동기화된 데이터 불러오기
         const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data.stay && Array.isArray(data.stay)) {
             data.stay.forEach((res) => {
               let targetRow = null;
+              
+              // 체크인 날짜가 오늘 날짜와 같다면 원래 입력한 행에, 그 외 재숙 기간이라면 빈 행에 매칭
+              let inT = res.checkIn ? new Date(res.checkIn).setHours(0, 0, 0, 0) : 0;
+              let isRestay = (workTime > inT);
+
               if (res.catKey) {
                 targetRow = Array.from(rows).find(r => 
                   r.getAttribute('data-cat-key') === res.catKey && 
@@ -668,6 +715,12 @@
                 targetRow.querySelector('.site').value = res.site || '';
                 targetRow.querySelector('.note').value = res.note || '';
                 targetRow.querySelector('.car').value = res.car || '';
+
+                if (isRestay) {
+                  targetRow.querySelector('.room-type').value = '재숙';
+                  targetRow.classList.add('restay-row');
+                  targetRow.dataset.autoSynced = "true";
+                }
               }
             });
           }
@@ -683,58 +736,6 @@
             });
           }
         }
-
-        // 2. 다른 날짜에서 넘어온 재숙(연박) 건 자동 동기화 (오직 동일한 예약 고유키 중복만 방지하고 완벽 허용)
-        const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
-        querySnapshot.forEach((docSnap) => {
-          if (docSnap.id === targetDate) return;
-          const pData = docSnap.data();
-          if (pData.stay && Array.isArray(pData.stay)) {
-            pData.stay.forEach(res => {
-              if (res.roomNo && res.roomNo.trim() !== '' && res.checkIn && res.checkOut && res.guestName) {
-                let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
-                let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
-                
-                if (workTime >= inT && workTime < outT) {
-                  // 동일한 예약(이름 + 체크인 + 체크아웃 + 호실번호)이 화면에 이미 반영되어 있는지 여부만 엄격히 대조
-                  const resUniqueKey = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}_${res.roomNo}`;
-
-                  const alreadyExists = Array.from(rows).some(r => {
-                    const name = r.querySelector('.guest-name')?.value.trim();
-                    const cin = r.querySelector('.check-in')?.value;
-                    const cout = r.querySelector('.check-out')?.value;
-                    const rno = r.querySelector('.room-no')?.value || '';
-                    const rUniqueKey = `${name}_${cin}_${cout}_${rno}`;
-                    return rUniqueKey === resUniqueKey;
-                  });
-
-                  if (!alreadyExists) {
-                    let emptyRow = null;
-                    if (res.catKey) {
-                      emptyRow = Array.from(rows).find(r => 
-                        r.getAttribute('data-cat-key') === res.catKey && 
-                        !r.querySelector('.guest-name').value
-                      );
-                    }
-                    if (!emptyRow) {
-                      emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
-                    }
-
-                    if (emptyRow) {
-                      emptyRow.querySelector('.room-no').value = res.roomNo || '';
-                      emptyRow.querySelector('.guest-name').value = res.guestName || '';
-                      emptyRow.querySelector('.check-in').value = res.checkIn || '';
-                      emptyRow.querySelector('.check-out').value = res.checkOut || '';
-                      emptyRow.querySelector('.room-type').value = '재숙';
-                      emptyRow.classList.add('restay-row');
-                      emptyRow.dataset.autoSynced = "true";
-                    }
-                  }
-                }
-              }
-            });
-          }
-        });
 
       } catch (err) {
         console.error("데이터 로드 실패:", err);
