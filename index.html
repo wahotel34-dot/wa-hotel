@@ -684,56 +684,41 @@
           }
         }
 
-        // 2. 다른 날짜에서 넘어온 재숙(연박) 건 자동 동기화 (방 번호가 입력된 건 각각 독립적으로 완벽히 허용)
+        // 2. 다른 날짜에서 넘어온 재숙(연박) 건 자동 동기화 (불필요한 중복 차단 로직 제거 후 완벽 허용)
         const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         querySnapshot.forEach((docSnap) => {
           if (docSnap.id === targetDate) return;
           const pData = docSnap.data();
           if (pData.stay && Array.isArray(pData.stay)) {
             pData.stay.forEach(res => {
-              // 호실 번호가 기입되어 있고 기간이 맞다면 재숙 대상
               if (res.roomNo && res.roomNo.trim() !== '' && res.checkIn && res.checkOut && res.guestName) {
                 let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
                 
                 if (workTime >= inT && workTime < outT) {
-                  // 고유 키 기준 검사 (이름 + 체크인 + 체크아웃 + 호실번호 모두 일치할 때만 중복 방지)
-                  const resUniqueKey = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}_${res.roomNo}`;
+                  // 이미 현재 화면의 동일한 방 번호(roomNo)에 수동 또는 당일 예약으로 채워져 있는지 여부만 체크
+                  const roomAlreadyFilled = Array.from(rows).some(r => r.querySelector('.room-no')?.value.trim() === res.roomNo.trim());
 
-                  const alreadyExists = Array.from(rows).some(r => {
-                    const name = r.querySelector('.guest-name')?.value.trim();
-                    const cin = r.querySelector('.check-in')?.value;
-                    const cout = r.querySelector('.check-out')?.value;
-                    const rno = r.querySelector('.room-no')?.value || '';
-                    const rUniqueKey = `${name}_${cin}_${cout}_${rno}`;
-                    return rUniqueKey === resUniqueKey;
-                  });
+                  if (!roomAlreadyFilled) {
+                    let emptyRow = null;
+                    if (res.catKey) {
+                      emptyRow = Array.from(rows).find(r => 
+                        r.getAttribute('data-cat-key') === res.catKey && 
+                        !r.querySelector('.guest-name').value
+                      );
+                    }
+                    if (!emptyRow) {
+                      emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+                    }
 
-                  if (!alreadyExists) {
-                    // 동일한 호실 번호가 화면에 이미 수동으로 입력되어 있는지 확인
-                    const roomAlreadyUsed = Array.from(rows).some(r => r.querySelector('.room-no')?.value.trim() === res.roomNo.trim());
-
-                    if (!roomAlreadyUsed) {
-                      let emptyRow = null;
-                      if (res.catKey) {
-                        emptyRow = Array.from(rows).find(r => 
-                          r.getAttribute('data-cat-key') === res.catKey && 
-                          !r.querySelector('.guest-name').value
-                        );
-                      }
-                      if (!emptyRow) {
-                        emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
-                      }
-
-                      if (emptyRow) {
-                        emptyRow.querySelector('.room-no').value = res.roomNo || '';
-                        emptyRow.querySelector('.guest-name').value = res.guestName || '';
-                        emptyRow.querySelector('.check-in').value = res.checkIn || '';
-                        emptyRow.querySelector('.check-out').value = res.checkOut || '';
-                        emptyRow.querySelector('.room-type').value = '재숙';
-                        emptyRow.classList.add('restay-row');
-                        emptyRow.dataset.autoSynced = "true";
-                      }
+                    if (emptyRow) {
+                      emptyRow.querySelector('.room-no').value = res.roomNo || '';
+                      emptyRow.querySelector('.guest-name').value = res.guestName || '';
+                      emptyRow.querySelector('.check-in').value = res.checkIn || '';
+                      emptyRow.querySelector('.check-out').value = res.checkOut || '';
+                      emptyRow.querySelector('.room-type').value = '재숙';
+                      emptyRow.classList.add('restay-row');
+                      emptyRow.dataset.autoSynced = "true";
                     }
                   }
                 }
