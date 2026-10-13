@@ -599,11 +599,52 @@
       });
 
       try {
+        // [핵심 보완] 저장을 누를 때 현재 날짜뿐만 아니라, 입력된 각 예약의 체크인~체크아웃 기간에 해당하는
+        // 모든 날짜별 문서(hotel_logs/YYYY-MM-DD)에도 해당 예약 정보를 자동으로 똑같이 동기화하여 저장합니다.
         await window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", targetDate), {
           stay: currentStay,
           rent: currentRent,
           updatedAt: new Date().toISOString()
         });
+
+        for (const res of currentStay) {
+          if (res.checkIn && res.checkOut && res.roomNo) {
+            let startD = new Date(res.checkIn);
+            let endD = new Date(res.checkOut);
+            let curr = new Date(startD);
+
+            while (curr < endD) {
+              let dStr = curr.toISOString().split('T')[0];
+              curr.setDate(curr.getDate() + 1);
+
+              if (dStr === targetDate) continue;
+
+              const docRef = window.FB_Doc(db, "hotel_logs", dStr);
+              const docSnap = await window.FB_GetDoc(docRef);
+              let otherStay = [];
+              let otherRent = [];
+              if (docSnap.exists()) {
+                otherStay = docSnap.data().stay || [];
+                otherRent = docSnap.data().rent || [];
+              }
+
+              // 동일한 호실 또는 고유 예약이 없으면 추가, 있으면 업데이트
+              const idx = otherStay.findIndex(s => s.roomNo === res.roomNo && s.checkIn === res.checkIn && s.checkOut === res.checkOut);
+              if (idx >= 0) {
+                otherStay[idx] = res;
+              } else {
+                otherStay.push(res);
+              }
+
+              await window.FB_SetDoc(docRef, {
+                stay: otherStay,
+                rent: otherRent,
+                updatedAt: new Date().toISOString()
+              });
+            }
+          }
+        }
+
       } catch (err) {
         console.error("저장 실패:", err);
       }
@@ -637,9 +678,6 @@
       const workTime = getMidnightTime(targetDate);
 
       try {
-        // [핵심 개선] 데이터베이스의 모든 날짜(hotel_logs) 문서를 불러와서,
-        // 오늘 날짜(workTime)가 체크인 ~ 체크아웃 기간 사이에 포함되는 모든 예약을 검색합니다.
-        // 이렇게 하면 어느 날짜에 최초 입력되었든 상관없이 기간 내 모든 일지에서 재숙 및 예약 정보가 100% 완벽하게 연동됩니다.
         const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         
         let allValidStays = [];
@@ -657,9 +695,7 @@
                 let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
                 
-                // 현재 일지가 체크인 날짜 이상이고 체크아웃 미만인 경우 (당일 체크인 포함, 연박 포함)
                 if (workTime >= inT && workTime < outT) {
-                  // 중복 추가 방지 (고유키: 이름 + 체크인 + 체크아웃 + 호실번호)
                   const uniqueKey = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}_${res.roomNo}`;
                   if (!allValidStays.some(s => `${s.guestName.trim()}_${s.checkIn}_${s.checkOut}_${s.roomNo}` === uniqueKey)) {
                     allValidStays.push({ ...res, isRestay: (workTime > inT) });
@@ -670,7 +706,6 @@
           }
         });
 
-        // 수집된 유효 예약들을 테이블 행에 순서대로 채워넣기
         allValidStays.forEach((res) => {
           let targetRow = null;
           if (res.catKey) {
