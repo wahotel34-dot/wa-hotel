@@ -568,8 +568,6 @@
         const guestNameVal = row.querySelector('.guest-name')?.value.trim();
         if (!guestNameVal) return;
 
-        if (row.dataset.autoSynced === "true") return;
-
         currentStay.push({
           catKey: row.getAttribute('data-cat-key') || '',
           roomNo: row.querySelector('.room-no')?.value || '',
@@ -601,53 +599,11 @@
       });
 
       try {
-        // 1. 현재 날짜 문서에 저장
         await window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", targetDate), {
           stay: currentStay,
           rent: currentRent,
           updatedAt: new Date().toISOString()
         });
-
-        // 2. 각 예약 건의 체크인 ~ 체크아웃 기간 사이에 있는 모든 날짜 문서에도 해당 예약 정보를 자동으로 전파(동기화)
-        for (const item of currentStay) {
-          if (item.checkIn && item.checkOut) {
-            let startD = new Date(item.checkIn);
-            let endD = new Date(item.checkOut);
-            let curr = new Date(startD);
-
-            while (curr < endD) {
-              let dStr = curr.toISOString().split('T')[0];
-              curr.setDate(curr.getDate() + 1);
-
-              if (dStr === targetDate) continue; // 현재 날짜는 이미 저장했으므로 패스
-
-              const otherDocRef = window.FB_Doc(db, "hotel_logs", dStr);
-              const otherDocSnap = await window.FB_GetDoc(otherDocRef);
-              
-              let otherStay = [];
-              let otherRent = [];
-              if (otherDocSnap.exists()) {
-                otherStay = otherDocSnap.data().stay || [];
-                otherRent = otherDocSnap.data().rent || [];
-              }
-
-              // 이미 해당 날짜에 동일한 방 번호와 예약 정보가 있는지 확인 후 업데이트 또는 추가
-              const existingIdx = otherStay.findIndex(s => s.roomNo === item.roomNo && s.checkIn === item.checkIn && s.checkOut === item.checkOut);
-              if (existingIdx >= 0) {
-                otherStay[existingIdx] = item;
-              } else {
-                otherStay.push(item);
-              }
-
-              await window.FB_SetDoc(otherDocRef, {
-                stay: otherStay,
-                rent: otherRent,
-                updatedAt: new Date().toISOString()
-              });
-            }
-          }
-        }
-
       } catch (err) {
         console.error("저장 실패:", err);
       }
@@ -681,60 +637,82 @@
       const workTime = getMidnightTime(targetDate);
 
       try {
-        // 1. 현재 날짜에 직접 저장된 데이터 및 동기화된 데이터 불러오기
-        const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.stay && Array.isArray(data.stay)) {
-            data.stay.forEach((res) => {
-              let targetRow = null;
-              
-              // 체크인 날짜가 오늘 날짜와 같다면 원래 입력한 행에, 그 외 재숙 기간이라면 빈 행에 매칭
-              let inT = res.checkIn ? new Date(res.checkIn).setHours(0, 0, 0, 0) : 0;
-              let isRestay = (workTime > inT);
+        // [핵심 개선] 데이터베이스의 모든 날짜(hotel_logs) 문서를 불러와서,
+        // 오늘 날짜(workTime)가 체크인 ~ 체크아웃 기간 사이에 포함되는 모든 예약을 검색합니다.
+        // 이렇게 하면 어느 날짜에 최초 입력되었든 상관없이 기간 내 모든 일지에서 재숙 및 예약 정보가 100% 완벽하게 연동됩니다.
+        const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
+        
+        let allValidStays = [];
+        let rentDataToLoad = null;
 
-              if (res.catKey) {
-                targetRow = Array.from(rows).find(r => 
-                  r.getAttribute('data-cat-key') === res.catKey && 
-                  !r.querySelector('.guest-name').value
-                );
-              }
-              if (!targetRow) {
-                targetRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
-              }
+        querySnapshot.forEach((docSnap) => {
+          const docData = docSnap.data();
+          if (docSnap.id === targetDate && docData.rent) {
+            rentDataToLoad = docData.rent;
+          }
 
-              if (targetRow) {
-                targetRow.querySelector('.room-no').value = res.roomNo || '';
-                targetRow.querySelector('.guest-name').value = res.guestName || '';
-                targetRow.querySelector('.check-in').value = res.checkIn || '';
-                targetRow.querySelector('.check-out').value = res.checkOut || '';
-                targetRow.querySelector('.price').value = res.price || '';
-                targetRow.querySelector('.cash').value = res.cash || '';
-                targetRow.querySelector('.card').value = res.card || '';
-                targetRow.querySelector('.bank').value = res.bank || '';
-                targetRow.querySelector('.site').value = res.site || '';
-                targetRow.querySelector('.note').value = res.note || '';
-                targetRow.querySelector('.car').value = res.car || '';
-
-                if (isRestay) {
-                  targetRow.querySelector('.room-type').value = '재숙';
-                  targetRow.classList.add('restay-row');
-                  targetRow.dataset.autoSynced = "true";
+          if (docData.stay && Array.isArray(docData.stay)) {
+            docData.stay.forEach(res => {
+              if (res.roomNo && res.roomNo.trim() !== '' && res.checkIn && res.checkOut && res.guestName) {
+                let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
+                let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
+                
+                // 현재 일지가 체크인 날짜 이상이고 체크아웃 미만인 경우 (당일 체크인 포함, 연박 포함)
+                if (workTime >= inT && workTime < outT) {
+                  // 중복 추가 방지 (고유키: 이름 + 체크인 + 체크아웃 + 호실번호)
+                  const uniqueKey = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}_${res.roomNo}`;
+                  if (!allValidStays.some(s => `${s.guestName.trim()}_${s.checkIn}_${s.checkOut}_${s.roomNo}` === uniqueKey)) {
+                    allValidStays.push({ ...res, isRestay: (workTime > inT) });
+                  }
                 }
               }
             });
           }
+        });
 
-          if (data.rent && Array.isArray(data.rent)) {
-            data.rent.forEach((item, idx) => {
-              if (rentRows[idx]) {
-                const inputs = rentRows[idx].querySelectorAll('input');
-                const selects = rentRows[idx].querySelectorAll('select');
-                inputs[0].value = item.room1 || ''; inputs[1].value = item.card1 || ''; inputs[2].value = item.cash1 || ''; selects[0].value = item.site1 || ''; inputs[3].value = item.time1 || ':';
-                inputs[4].value = item.room2 || ''; inputs[5].value = item.card2 || ''; inputs[6].value = item.cash2 || ''; selects[1].value = item.site2 || ''; inputs[7].value = item.time2 || ':';
-              }
-            });
+        // 수집된 유효 예약들을 테이블 행에 순서대로 채워넣기
+        allValidStays.forEach((res) => {
+          let targetRow = null;
+          if (res.catKey) {
+            targetRow = Array.from(rows).find(r => 
+              r.getAttribute('data-cat-key') === res.catKey && 
+              !r.querySelector('.guest-name').value
+            );
           }
+          if (!targetRow) {
+            targetRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+          }
+
+          if (targetRow) {
+            targetRow.querySelector('.room-no').value = res.roomNo || '';
+            targetRow.querySelector('.guest-name').value = res.guestName || '';
+            targetRow.querySelector('.check-in').value = res.checkIn || '';
+            targetRow.querySelector('.check-out').value = res.checkOut || '';
+            targetRow.querySelector('.price').value = res.price || '';
+            targetRow.querySelector('.cash').value = res.cash || '';
+            targetRow.querySelector('.card').value = res.card || '';
+            targetRow.querySelector('.bank').value = res.bank || '';
+            targetRow.querySelector('.site').value = res.site || '';
+            targetRow.querySelector('.note').value = res.note || '';
+            targetRow.querySelector('.car').value = res.car || '';
+
+            if (res.isRestay) {
+              targetRow.querySelector('.room-type').value = '재숙';
+              targetRow.classList.add('restay-row');
+              targetRow.dataset.autoSynced = "true";
+            }
+          }
+        });
+
+        if (rentDataToLoad) {
+          rentDataToLoad.forEach((item, idx) => {
+            if (rentRows[idx]) {
+              const inputs = rentRows[idx].querySelectorAll('input');
+              const selects = rentRows[idx].querySelectorAll('select');
+              inputs[0].value = item.room1 || ''; inputs[1].value = item.card1 || ''; inputs[2].value = item.cash1 || ''; selects[0].value = item.site1 || ''; inputs[3].value = item.time1 || ':';
+              inputs[4].value = item.room2 || ''; inputs[5].value = item.card2 || ''; inputs[6].value = item.cash2 || ''; selects[1].value = item.site2 || ''; inputs[7].value = item.time2 || ':';
+            }
+          });
         }
 
       } catch (err) {
