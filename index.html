@@ -675,7 +675,7 @@
           }
         }
 
-        // 2. [추가] 다른 날짜에 입력된 예약 중 기간(체크인 ~ 체크아웃)이 오늘 날짜에 포함되면 '재숙'으로 자동 불러오기
+        // 2. 다른 날짜에 입력된 예약 중 기간(체크인 ~ 체크아웃)이 오늘 날짜에 포함되면 '재숙'으로 자동 불러오기
         const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         querySnapshot.forEach((docSnap) => {
           if (docSnap.id === targetDate) return;
@@ -697,21 +697,39 @@
                   });
 
                   if (!alreadyExists) {
-                    // ★ 수정된 부분: 저장된 객실 타입(catKey)과 일치하는 구역의 첫 번째 빈 행을 먼저 찾음
-                    let emptyRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
-                    
-                    // 만약 해당 객실 타입 구역이 꽉 찼다면 다른 구역의 빈 행이라도 찾음
-                    if (!emptyRow) {
-                      emptyRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+                    let targetRow = null;
+
+                    // 1순위: 이전 일자에서 배정되었던 완벽히 동일한 위치(rowIndex)에 우선 배정 (연박/재숙은 보통 동일 객실 사용)
+                    if (res.rowIndex !== undefined && rows[res.rowIndex] && !rows[res.rowIndex].querySelector('.guest-name').value) {
+                      targetRow = rows[res.rowIndex];
                     }
 
-                    if (emptyRow) {
-                      emptyRow.querySelector('.room-no').value = res.roomNo || '';
-                      emptyRow.querySelector('.guest-name').value = res.guestName || '';
-                      emptyRow.querySelector('.check-in').value = res.checkIn || '';
-                      emptyRow.querySelector('.check-out').value = res.checkOut || '';
-                      emptyRow.querySelector('.room-type').value = '재숙';
-                      emptyRow.classList.add('restay-row');
+                    // 2순위: 과거 데이터라 객실타입 기록이 없거나 원래 위치가 차있다면, 같은 객실 타입의 빈 행 찾기
+                    if (!targetRow) {
+                      let targetCatKey = res.catKey;
+                      
+                      // catKey 기록이 없는 예전 데이터라면 이전 배정 위치(rowIndex)를 기반으로 객실 타입을 역추적!
+                      if (!targetCatKey && res.rowIndex !== undefined && rows[res.rowIndex]) {
+                        targetCatKey = rows[res.rowIndex].getAttribute('data-cat-key');
+                      }
+                      
+                      if (targetCatKey) {
+                        targetRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === targetCatKey && !r.querySelector('.guest-name').value);
+                      }
+                    }
+
+                    // 3순위: 그래도 자리를 찾지 못했다면 빈 행 중 가장 첫 번째 곳에 배정
+                    if (!targetRow) {
+                      targetRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
+                    }
+
+                    if (targetRow) {
+                      targetRow.querySelector('.room-no').value = res.roomNo || '';
+                      targetRow.querySelector('.guest-name').value = res.guestName || '';
+                      targetRow.querySelector('.check-in').value = res.checkIn || '';
+                      targetRow.querySelector('.check-out').value = res.checkOut || '';
+                      targetRow.querySelector('.room-type').value = '재숙';
+                      targetRow.classList.add('restay-row');
                     }
                   }
                 }
