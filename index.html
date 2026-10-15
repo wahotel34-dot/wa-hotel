@@ -558,8 +558,13 @@
       const currentStay = [];
       const stayRows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
       
+      let currentCounts = {};
+
       stayRows.forEach((row, index) => {
         const guestNameVal = row.querySelector('.guest-name')?.value.trim();
+        const checkInVal = row.querySelector('.check-in')?.value || '';
+        const checkOutVal = row.querySelector('.check-out')?.value || '';
+
         if (!guestNameVal) return; 
 
         currentStay.push({
@@ -567,8 +572,8 @@
           catKey: row.getAttribute('data-cat-key') || '',
           roomNo: row.querySelector('.room-no')?.value || '',
           guestName: guestNameVal,
-          checkIn: row.querySelector('.check-in')?.value || '',
-          checkOut: row.querySelector('.check-out')?.value || '',
+          checkIn: checkInVal,
+          checkOut: checkOutVal,
           stayDays: row.querySelector('.stay-days')?.value || '',
           roomType: row.querySelector('.room-type')?.value || '',
           price: row.querySelector('.price')?.value || '',
@@ -579,6 +584,9 @@
           note: row.querySelector('.note')?.value || '',
           car: row.querySelector('.car')?.value || ''
         });
+
+        const key = `${guestNameVal}_${checkInVal}_${checkOutVal}`;
+        currentCounts[key] = (currentCounts[key] || 0) + 1;
       });
 
       const currentRent = [];
@@ -597,8 +605,9 @@
         const workTime = new Date(targetDate).setHours(0, 0, 0, 0);
         const allDocsSnap = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         
-        let expectedMap = new Map(); 
+        let expectedFromPast = [];
         allDocsSnap.forEach(docSnap => {
+          if (docSnap.id === targetDate) return;
           const pData = docSnap.data();
           if (pData.stay && Array.isArray(pData.stay)) {
             pData.stay.forEach(pSt => {
@@ -606,66 +615,68 @@
                 let inT = new Date(pSt.checkIn).setHours(0,0,0,0);
                 let outT = new Date(pSt.checkOut).setHours(0,0,0,0);
                 
-                if (docSnap.id === targetDate || (workTime > inT && workTime < outT)) {
-                  // 동일한 이름의 방 여러 개를 구분하기 위해 rowIndex를 키값에 추가
-                  let key = `${pSt.guestName}_${pSt.checkIn}_${pSt.checkOut}_${pSt.rowIndex}`;
-                  expectedMap.set(key, pSt);
+                if (workTime >= inT && workTime < outT) {
+                  expectedFromPast.push({ docId: docSnap.id, data: pSt });
                 }
               }
             });
           }
         });
 
-        let deletedStays = [];
-        expectedMap.forEach((expSt, key) => {
-          const stillExists = currentStay.some(currSt => 
-            currSt.guestName === expSt.guestName &&
-            currSt.checkIn === expSt.checkIn &&
-            currSt.checkOut === expSt.checkOut &&
-            currSt.rowIndex === expSt.rowIndex // rowIndex까지 동일해야 기존 데이터 유지로 판단
-          );
-          
-          if (!stillExists) {
-            deletedStays.push(expSt); 
-          }
+        let pastCounts = {};
+        expectedFromPast.forEach(item => {
+          const key = `${item.data.guestName.trim()}_${item.data.checkIn}_${item.data.checkOut}`;
+          if (!pastCounts[key]) pastCounts[key] = [];
+          pastCounts[key].push(item);
         });
 
-        if (deletedStays.length > 0) {
-          const deletePromises = [];
-          allDocsSnap.forEach(docSnap => {
-            if (docSnap.id === targetDate) return; 
+        let docsToUpdate = {};
+        
+        for (let key in pastCounts) {
+          let pastItems = pastCounts[key];
+          let currentNum = currentCounts[key] || 0;
+          let pastNum = pastItems.length;
+
+          if (currentNum < pastNum) {
+            let deleteCount = pastNum - currentNum;
             
-            let pData = docSnap.data();
-            let isModified = false;
-
-            if (pData.stay && Array.isArray(pData.stay)) {
-              const filteredStay = pData.stay.filter(pSt => {
-                const isTargetForDelete = deletedStays.some(del => 
-                  del.guestName === pSt.guestName && 
-                  del.checkIn === pSt.checkIn && 
-                  del.checkOut === pSt.checkOut &&
-                  del.rowIndex === pSt.rowIndex // 정확히 삭제된 그 방(위치)의 예약만 삭제
-                );
-                if (isTargetForDelete) isModified = true;
-                return !isTargetForDelete; 
-              });
-
-              if (isModified) {
-                deletePromises.push(
-                  window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", docSnap.id), {
-                    ...pData,
-                    stay: filteredStay,
-                    updatedAt: new Date().toISOString()
-                  })
-                );
+            for (let i = 0; i < deleteCount; i++) {
+              let itemToDelete = pastItems[i];
+              if (!docsToUpdate[itemToDelete.docId]) {
+                let docData = allDocsSnap.docs.find(d => d.id === itemToDelete.docId).data();
+                docsToUpdate[itemToDelete.docId] = docData.stay || [];
+              }
+              
+              let stArray = docsToUpdate[itemToDelete.docId];
+              let idxToRemove = stArray.findIndex(s => 
+                s.guestName.trim() === itemToDelete.data.guestName.trim() && 
+                s.checkIn === itemToDelete.data.checkIn && 
+                s.checkOut === itemToDelete.data.checkOut
+              );
+              
+              if (idxToRemove !== -1) {
+                stArray.splice(idxToRemove, 1);
               }
             }
-          });
-
-          if (deletePromises.length > 0) {
-            await Promise.all(deletePromises);
-            console.log(`[연쇄 삭제 완료] ${deletedStays.length}개의 취소 예약이 지워졌습니다.`);
           }
+        }
+
+        const deletePromises = [];
+        const allDocsList = allDocsSnap.docs;
+        for (let docId in docsToUpdate) {
+          let docData = allDocsList.find(d => d.id === docId).data();
+          deletePromises.push(
+            window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", docId), {
+              ...docData,
+              stay: docsToUpdate[docId],
+              updatedAt: new Date().toISOString()
+            })
+          );
+        }
+
+        if (deletePromises.length > 0) {
+          await Promise.all(deletePromises);
+          console.log("취소된 방 연쇄 삭제 완료 (개수 기반 매칭)");
         }
 
         await window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", targetDate), {
@@ -707,6 +718,7 @@
       const workTime = getMidnightTime(targetDate);
 
       try {
+        // 1. 타겟 날짜에 직접 저장된 데이터 먼저 완벽히 복구
         const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -752,61 +764,74 @@
           }
         }
 
+        // 2. 다른 날짜에서 이어지는 "재숙" 데이터를 가져와 매칭 (카운트 기반 매칭)
+        let pastRestays = [];
         const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         querySnapshot.forEach((docSnap) => {
           if (docSnap.id === targetDate) return;
           const pData = docSnap.data();
           if (pData.stay && Array.isArray(pData.stay)) {
-            pData.stay.forEach((res, pastIndex) => {
+            pData.stay.forEach((res) => {
               if (res.checkIn && res.checkOut && res.guestName) {
                 let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
-                
                 if (workTime > inT && workTime < outT) {
-                  const expectedIndex = res.rowIndex !== undefined ? res.rowIndex : pastIndex;
-                  const alreadyExists = Array.from(rows).some((r, rIdx) => {
-                    const name = r.querySelector('.guest-name')?.value.trim();
-                    const cin = r.querySelector('.check-in')?.value;
-                    const cout = r.querySelector('.check-out')?.value;
-                    // 같은 이름, 같은 날짜더라도, 할당된 인덱스(방 위치)가 동일한 예약만 중복 방지
-                    return name === res.guestName.trim() && cin === res.checkIn && cout === res.checkOut && rIdx === expectedIndex;
-                  });
-
-                  if (!alreadyExists) {
-                    let targetRow = null;
-                    const originalIndex = res.rowIndex !== undefined ? res.rowIndex : pastIndex;
-
-                    if (originalIndex >= 0 && originalIndex < rows.length && !rows[originalIndex].querySelector('.guest-name').value) {
-                      targetRow = rows[originalIndex];
-                    }
-
-                    if (!targetRow) {
-                      let targetCatKey = res.catKey;
-                      if (!targetCatKey && originalIndex >= 0 && originalIndex < rows.length) {
-                        targetCatKey = rows[originalIndex].getAttribute('data-cat-key');
-                      }
-                      
-                      if (targetCatKey) {
-                        targetRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === targetCatKey && !r.querySelector('.guest-name').value);
-                      }
-                    }
-
-                    if (!targetRow) {
-                      targetRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
-                    }
-
-                    if (targetRow) {
-                      targetRow.querySelector('.room-no').value = res.roomNo || '';
-                      targetRow.querySelector('.guest-name').value = res.guestName || '';
-                      targetRow.querySelector('.check-in').value = res.checkIn || '';
-                      targetRow.querySelector('.check-out').value = res.checkOut || '';
-                      targetRow.querySelector('.room-type').value = '재숙';
-                      targetRow.classList.add('restay-row');
-                    }
-                  }
+                  pastRestays.push(res);
                 }
               }
             });
+          }
+        });
+
+        let matchedRows = new Set(); // 화면에 이미 배정된 재숙 객실 추적
+
+        pastRestays.forEach(pSt => {
+          let foundIdx = -1;
+          
+          // 먼저 화면에 해당 이름과 날짜가 채워져 있는지 1:1로 매칭
+          for (let i = 0; i < rows.length; i++) {
+            if (matchedRows.has(i)) continue;
+            let r = rows[i];
+            let nameMatch = r.querySelector('.guest-name')?.value.trim() === pSt.guestName.trim();
+            let inMatch = r.querySelector('.check-in')?.value === pSt.checkIn;
+            let outMatch = r.querySelector('.check-out')?.value === pSt.checkOut;
+            
+            if (nameMatch && inMatch && outMatch) {
+              foundIdx = i;
+              break;
+            }
+          }
+
+          if (foundIdx !== -1) {
+            // 이미 타겟날짜 문서로 불러와져 있다면 시각적 스타일(재숙)만 씌움
+            matchedRows.add(foundIdx);
+            let tr = rows[foundIdx];
+            tr.querySelector('.room-type').value = '재숙';
+            tr.classList.add('restay-row');
+          } else {
+            // 화면에 부족하다면 빈 칸을 찾아서 추가로 채워줌 (동명이인/여러 방)
+            let targetIdx = -1;
+            
+            if (pSt.rowIndex !== undefined && pSt.rowIndex >= 0 && pSt.rowIndex < rows.length && !rows[pSt.rowIndex].querySelector('.guest-name').value) {
+              targetIdx = pSt.rowIndex;
+            }
+            if (targetIdx === -1 && pSt.catKey) {
+              targetIdx = Array.from(rows).findIndex((r, i) => !matchedRows.has(i) && !r.querySelector('.guest-name').value && r.getAttribute('data-cat-key') === pSt.catKey);
+            }
+            if (targetIdx === -1) {
+              targetIdx = Array.from(rows).findIndex((r, i) => !matchedRows.has(i) && !r.querySelector('.guest-name').value);
+            }
+
+            if (targetIdx !== -1) {
+              matchedRows.add(targetIdx);
+              let targetRow = rows[targetIdx];
+              targetRow.querySelector('.room-no').value = pSt.roomNo || '';
+              targetRow.querySelector('.guest-name').value = pSt.guestName || '';
+              targetRow.querySelector('.check-in').value = pSt.checkIn || '';
+              targetRow.querySelector('.check-out').value = pSt.checkOut || '';
+              targetRow.querySelector('.room-type').value = '재숙';
+              targetRow.classList.add('restay-row');
+            }
           }
         });
 
