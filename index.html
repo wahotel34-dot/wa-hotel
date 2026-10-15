@@ -560,7 +560,7 @@
       
       stayRows.forEach((row, index) => {
         const guestNameVal = row.querySelector('.guest-name')?.value.trim();
-        if (!guestNameVal) return; // 이름이 비어있으면 현재 저장 목록에서 제외
+        if (!guestNameVal) return; // 이름이 지워진 줄은 저장 제외
 
         currentStay.push({
           rowIndex: index,
@@ -594,41 +594,53 @@
       });
 
       try {
-        // [중요 로직] 1. 저장 전, 기존 데이터를 불러와 '지워진 예약'이 있는지 검사합니다.
-        const oldDoc = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
-        let deletedStays = [];
+        const workTime = new Date(targetDate).setHours(0, 0, 0, 0);
+        const allDocsSnap = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         
-        if (oldDoc.exists()) {
-          const oldData = oldDoc.data();
-          if (oldData.stay && Array.isArray(oldData.stay)) {
-            oldData.stay.forEach(oldSt => {
-              // 이전에는 있었는데, 현재 저장하려는 목록(currentStay)에 없는 경우 = '삭제(취소)된 예약'
-              const stillExists = currentStay.some(currSt => 
-                currSt.guestName === oldSt.guestName && 
-                currSt.checkIn === oldSt.checkIn && 
-                currSt.checkOut === oldSt.checkOut
-              );
-              
-              if (!stillExists && oldSt.checkIn && oldSt.checkOut && oldSt.guestName) {
-                deletedStays.push(oldSt);
+        // 1. "화면에 떠있어야 할 정상적인 예약" 리스트를 클라우드 전체에서 조회
+        let expectedMap = new Map(); 
+        allDocsSnap.forEach(docSnap => {
+          const pData = docSnap.data();
+          if (pData.stay && Array.isArray(pData.stay)) {
+            pData.stay.forEach(pSt => {
+              if (pSt.checkIn && pSt.checkOut && pSt.guestName) {
+                let inT = new Date(pSt.checkIn).setHours(0,0,0,0);
+                let outT = new Date(pSt.checkOut).setHours(0,0,0,0);
+                
+                // 해당 데이터가 현재 저장하려는 날짜와 원본이거나 재숙으로 겹치는지 확인
+                if (docSnap.id === targetDate || (workTime > inT && workTime < outT)) {
+                  let key = `${pSt.guestName}_${pSt.checkIn}_${pSt.checkOut}`;
+                  expectedMap.set(key, pSt);
+                }
               }
             });
           }
-        }
+        });
 
-        // [중요 로직] 2. 지워진 예약이 있다면 클라우드의 '모든 날짜'를 뒤져서 연결된 재숙을 삭제합니다.
+        // 2. 화면에서 이름이 없어진(지워진) 항목 찾아내기
+        let deletedStays = [];
+        expectedMap.forEach((expSt, key) => {
+          const stillExists = currentStay.some(currSt => 
+            currSt.guestName === expSt.guestName &&
+            currSt.checkIn === expSt.checkIn &&
+            currSt.checkOut === expSt.checkOut
+          );
+          
+          if (!stillExists) {
+            deletedStays.push(expSt); // 사용자가 이름 칸을 비운 예약
+          }
+        });
+
+        // 3. 지워진 항목이 발견되면 클라우드 전체 날짜를 돌면서 해당 내역 일괄 삭제 (재숙+원본 동시 삭제)
         if (deletedStays.length > 0) {
-          const allDocsSnap = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
           const deletePromises = [];
-
           allDocsSnap.forEach(docSnap => {
-            if (docSnap.id === targetDate) return; // 현재 날짜는 아래에서 덮어씌우므로 패스
+            if (docSnap.id === targetDate) return; 
             
             let pData = docSnap.data();
             let isModified = false;
 
             if (pData.stay && Array.isArray(pData.stay)) {
-              // 지워진 예약과 완벽히 일치하는(이름+체크인+체크아웃) 내역은 걸러내기
               const filteredStay = pData.stay.filter(pSt => {
                 const isTargetForDelete = deletedStays.some(del => 
                   del.guestName === pSt.guestName && 
@@ -636,10 +648,9 @@
                   del.checkOut === pSt.checkOut
                 );
                 if (isTargetForDelete) isModified = true;
-                return !isTargetForDelete; // 삭제대상이 아닌 것만 남김
+                return !isTargetForDelete; 
               });
 
-              // 해당 날짜에 삭제할 재숙 데이터가 있었다면 클라우드 갱신 예약
               if (isModified) {
                 deletePromises.push(
                   window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", docSnap.id), {
@@ -652,14 +663,13 @@
             }
           });
 
-          // 찾아낸 모든 과거/미래의 재숙 기록을 일괄 삭제 처리
           if (deletePromises.length > 0) {
             await Promise.all(deletePromises);
-            console.log(`[연쇄 삭제 완료] ${deletedStays.length}개의 취소된 예약과 관련된 타 날짜 재숙 기록이 완전히 지워졌습니다.`);
+            console.log(`[연쇄 삭제 완료] ${deletedStays.length}개의 취소 예약이 모든 날짜에서 지워졌습니다.`);
           }
         }
 
-        // 3. 최종적으로 현재 날짜의 화면 데이터를 저장 (수정된 내용 덮어쓰기)
+        // 4. 최종적으로 현재 날짜 문서 저장
         await window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", targetDate), {
           stay: currentStay,
           rent: currentRent,
@@ -759,8 +769,7 @@
                     const name = r.querySelector('.guest-name')?.value.trim();
                     const cin = r.querySelector('.check-in')?.value;
                     const cout = r.querySelector('.check-out')?.value;
-                    const rno = r.querySelector('.room-no')?.value.trim();
-                    return name === res.guestName.trim() && cin === res.checkIn && cout === res.checkOut && rno === (res.roomNo || '').trim();
+                    return name === res.guestName.trim() && cin === res.checkIn && cout === res.checkOut;
                   });
 
                   if (!alreadyExists) {
@@ -813,6 +822,9 @@
       await saveDataForDate(currentDate);
       checkCapacityAlerts();
       alert('💾 클라우드에 일지가 안전하게 저장되었습니다.');
+      
+      // 저장 직후 화면을 새로고침하여 이름을 지운 열의 잔여 데이터(날짜 등)를 화면에서 완전히 없애줍니다.
+      await loadDataForDate(currentDate); 
     });
 
     document.getElementById('btn-clear').addEventListener('click', () => {
