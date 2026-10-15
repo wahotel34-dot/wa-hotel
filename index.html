@@ -560,7 +560,7 @@
       
       stayRows.forEach((row, index) => {
         const guestNameVal = row.querySelector('.guest-name')?.value.trim();
-        if (!guestNameVal) return; // 이름이 지워진 줄은 저장 제외
+        if (!guestNameVal) return; 
 
         currentStay.push({
           rowIndex: index,
@@ -597,7 +597,6 @@
         const workTime = new Date(targetDate).setHours(0, 0, 0, 0);
         const allDocsSnap = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         
-        // 1. "화면에 떠있어야 할 정상적인 예약" 리스트를 클라우드 전체에서 조회
         let expectedMap = new Map(); 
         allDocsSnap.forEach(docSnap => {
           const pData = docSnap.data();
@@ -607,9 +606,9 @@
                 let inT = new Date(pSt.checkIn).setHours(0,0,0,0);
                 let outT = new Date(pSt.checkOut).setHours(0,0,0,0);
                 
-                // 해당 데이터가 현재 저장하려는 날짜와 원본이거나 재숙으로 겹치는지 확인
                 if (docSnap.id === targetDate || (workTime > inT && workTime < outT)) {
-                  let key = `${pSt.guestName}_${pSt.checkIn}_${pSt.checkOut}`;
+                  // 동일한 이름의 방 여러 개를 구분하기 위해 rowIndex를 키값에 추가
+                  let key = `${pSt.guestName}_${pSt.checkIn}_${pSt.checkOut}_${pSt.rowIndex}`;
                   expectedMap.set(key, pSt);
                 }
               }
@@ -617,21 +616,20 @@
           }
         });
 
-        // 2. 화면에서 이름이 없어진(지워진) 항목 찾아내기
         let deletedStays = [];
         expectedMap.forEach((expSt, key) => {
           const stillExists = currentStay.some(currSt => 
             currSt.guestName === expSt.guestName &&
             currSt.checkIn === expSt.checkIn &&
-            currSt.checkOut === expSt.checkOut
+            currSt.checkOut === expSt.checkOut &&
+            currSt.rowIndex === expSt.rowIndex // rowIndex까지 동일해야 기존 데이터 유지로 판단
           );
           
           if (!stillExists) {
-            deletedStays.push(expSt); // 사용자가 이름 칸을 비운 예약
+            deletedStays.push(expSt); 
           }
         });
 
-        // 3. 지워진 항목이 발견되면 클라우드 전체 날짜를 돌면서 해당 내역 일괄 삭제 (재숙+원본 동시 삭제)
         if (deletedStays.length > 0) {
           const deletePromises = [];
           allDocsSnap.forEach(docSnap => {
@@ -645,7 +643,8 @@
                 const isTargetForDelete = deletedStays.some(del => 
                   del.guestName === pSt.guestName && 
                   del.checkIn === pSt.checkIn && 
-                  del.checkOut === pSt.checkOut
+                  del.checkOut === pSt.checkOut &&
+                  del.rowIndex === pSt.rowIndex // 정확히 삭제된 그 방(위치)의 예약만 삭제
                 );
                 if (isTargetForDelete) isModified = true;
                 return !isTargetForDelete; 
@@ -665,11 +664,10 @@
 
           if (deletePromises.length > 0) {
             await Promise.all(deletePromises);
-            console.log(`[연쇄 삭제 완료] ${deletedStays.length}개의 취소 예약이 모든 날짜에서 지워졌습니다.`);
+            console.log(`[연쇄 삭제 완료] ${deletedStays.length}개의 취소 예약이 지워졌습니다.`);
           }
         }
 
-        // 4. 최종적으로 현재 날짜 문서 저장
         await window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", targetDate), {
           stay: currentStay,
           rent: currentRent,
@@ -765,11 +763,13 @@
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
                 
                 if (workTime > inT && workTime < outT) {
-                  const alreadyExists = Array.from(rows).some(r => {
+                  const expectedIndex = res.rowIndex !== undefined ? res.rowIndex : pastIndex;
+                  const alreadyExists = Array.from(rows).some((r, rIdx) => {
                     const name = r.querySelector('.guest-name')?.value.trim();
                     const cin = r.querySelector('.check-in')?.value;
                     const cout = r.querySelector('.check-out')?.value;
-                    return name === res.guestName.trim() && cin === res.checkIn && cout === res.checkOut;
+                    // 같은 이름, 같은 날짜더라도, 할당된 인덱스(방 위치)가 동일한 예약만 중복 방지
+                    return name === res.guestName.trim() && cin === res.checkIn && cout === res.checkOut && rIdx === expectedIndex;
                   });
 
                   if (!alreadyExists) {
@@ -823,7 +823,6 @@
       checkCapacityAlerts();
       alert('💾 클라우드에 일지가 안전하게 저장되었습니다.');
       
-      // 저장 직후 화면을 새로고침하여 이름을 지운 열의 잔여 데이터(날짜 등)를 화면에서 완전히 없애줍니다.
       await loadDataForDate(currentDate); 
     });
 
