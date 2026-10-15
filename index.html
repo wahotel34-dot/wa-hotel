@@ -636,10 +636,13 @@
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data.stay && Array.isArray(data.stay)) {
-            data.stay.forEach((res) => {
+            data.stay.forEach((res, idx) => {
               let targetRow = null;
-              if (res.rowIndex !== undefined && rows[res.rowIndex]) {
-                targetRow = rows[res.rowIndex];
+              // rowIndex가 있으면 우선 사용, 없으면 저장된 배열 순서(idx)를 위치로 간주
+              const expectedIndex = res.rowIndex !== undefined ? res.rowIndex : idx;
+              
+              if (rows[expectedIndex] && !rows[expectedIndex].querySelector('.guest-name').value) {
+                targetRow = rows[expectedIndex];
               } else if (res.catKey) {
                 targetRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
               }
@@ -681,13 +684,13 @@
           if (docSnap.id === targetDate) return;
           const pData = docSnap.data();
           if (pData.stay && Array.isArray(pData.stay)) {
-            pData.stay.forEach(res => {
+            // 과거 데이터의 배열 순서(pastIndex)를 활용하여 원래 위치를 추적
+            pData.stay.forEach((res, pastIndex) => {
               if (res.checkIn && res.checkOut && res.guestName) {
                 let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
                 
                 if (workTime > inT && workTime < outT) {
-                  // 이미 현재 화면에 동일한 이름과 체크인/체크아웃 기간인 항목이 있는지 확인
                   const alreadyExists = Array.from(rows).some(r => {
                     const name = r.querySelector('.guest-name')?.value.trim();
                     const cin = r.querySelector('.check-in')?.value;
@@ -698,19 +701,20 @@
 
                   if (!alreadyExists) {
                     let targetRow = null;
+                    
+                    // 과거 데이터의 원래 위치 인덱스 도출 (rowIndex 속성이 없으면 배열 인덱스인 pastIndex 사용)
+                    const originalIndex = res.rowIndex !== undefined ? res.rowIndex : pastIndex;
 
-                    // 1순위: 이전 일자에서 배정되었던 완벽히 동일한 위치(rowIndex)에 우선 배정 (연박/재숙은 보통 동일 객실 사용)
-                    if (res.rowIndex !== undefined && rows[res.rowIndex] && !rows[res.rowIndex].querySelector('.guest-name').value) {
-                      targetRow = rows[res.rowIndex];
+                    // 1순위: 이전 일자에서 배정되었던 '정확히 동일한 줄'에 우선 배정
+                    if (originalIndex >= 0 && originalIndex < rows.length && !rows[originalIndex].querySelector('.guest-name').value) {
+                      targetRow = rows[originalIndex];
                     }
 
-                    // 2순위: 과거 데이터라 객실타입 기록이 없거나 원래 위치가 차있다면, 같은 객실 타입의 빈 행 찾기
+                    // 2순위: 원래 줄이 차있다면, 그 줄이 속했던 객실 타입(catKey)을 역추적하여 같은 타입의 빈 공간 탐색
                     if (!targetRow) {
                       let targetCatKey = res.catKey;
-                      
-                      // catKey 기록이 없는 예전 데이터라면 이전 배정 위치(rowIndex)를 기반으로 객실 타입을 역추적!
-                      if (!targetCatKey && res.rowIndex !== undefined && rows[res.rowIndex]) {
-                        targetCatKey = rows[res.rowIndex].getAttribute('data-cat-key');
+                      if (!targetCatKey && originalIndex >= 0 && originalIndex < rows.length) {
+                        targetCatKey = rows[originalIndex].getAttribute('data-cat-key');
                       }
                       
                       if (targetCatKey) {
@@ -718,7 +722,7 @@
                       }
                     }
 
-                    // 3순위: 그래도 자리를 찾지 못했다면 빈 행 중 가장 첫 번째 곳에 배정
+                    // 3순위: 그래도 자리가 없으면 빈 곳 아무데나 배정
                     if (!targetRow) {
                       targetRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
                     }
