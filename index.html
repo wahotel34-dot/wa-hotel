@@ -275,12 +275,22 @@
       buildRentTable();
       loadDataForDate(currentLoadingDate);
 
+      // 날짜 변경 전 현재 입력 중인 내용 자동 저장 보완
       dateInput.addEventListener('change', async (e) => {
-        if (currentLoadingDate) {
-          await saveDataForDate(currentLoadingDate);
+        const oldDate = currentLoadingDate;
+        if (oldDate) {
+          await saveDataForDate(oldDate);
         }
         currentLoadingDate = e.target.value;
         await loadDataForDate(currentLoadingDate);
+      });
+
+      // 브라우저 닫거나 새로고침 시 자동 저장
+      window.addEventListener('beforeunload', () => {
+        if (currentLoadingDate) {
+          // 비동기 처리가 완전히 보장되지는 않으나 시도
+          saveDataForDate(currentLoadingDate);
+        }
       });
 
       document.getElementById('btn-reset-all').addEventListener('click', async () => {
@@ -354,8 +364,9 @@
         html += `<tr class="section-header" data-cat-key="${cat.categoryKey}"><td colspan="15">${cat.name}</td></tr>`;
         for (let i = 0; i < cat.count; i++) {
           let currentNo = cat.start + i;
+          // 각 행마다 고유 ID(UUID 형태 또는 인덱스 기반 키) 부여하여 데이터 정합성 강화
           html += `
-            <tr data-row="${currentNo}" data-cat-key="${cat.categoryKey}">
+            <tr data-row="${currentNo}" data-cat-key="${cat.categoryKey}" data-uid="${cat.categoryKey}_${currentNo}">
               <td>${currentNo}</td>
               <td><input type="text" class="room-no" style="text-align:center;"></td>
               <td><input type="text" class="guest-name"></td>
@@ -388,7 +399,7 @@
       let html = '';
       for (let i = 1; i <= 10; i++) {
         html += `
-          <tr>
+          <tr data-rent-left="${i}" data-rent-right="${i + 10}">
             <td>${i}</td>
             <td><input type="text" class="rent-room" style="text-align:center;"></td>
             <td><input type="text" class="rent-card calc-trigger text-right"></td>
@@ -558,8 +569,6 @@
       const currentStay = [];
       const stayRows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
       
-      let currentCounts = {};
-
       stayRows.forEach((row, index) => {
         const guestNameVal = row.querySelector('.guest-name')?.value.trim();
         const checkInVal = row.querySelector('.check-in')?.value || '';
@@ -568,6 +577,7 @@
         if (!guestNameVal) return; 
 
         currentStay.push({
+          uid: row.getAttribute('data-uid') || `row_${index}`,
           rowIndex: index,
           catKey: row.getAttribute('data-cat-key') || '',
           roomNo: row.querySelector('.room-no')?.value || '',
@@ -584,17 +594,15 @@
           note: row.querySelector('.note')?.value || '',
           car: row.querySelector('.car')?.value || ''
         });
-
-        const key = `${guestNameVal}_${checkInVal}_${checkOutVal}`;
-        currentCounts[key] = (currentCounts[key] || 0) + 1;
       });
 
       const currentRent = [];
-      document.querySelectorAll('#rent-tbody tr').forEach(row => {
+      document.querySelectorAll('#rent-tbody tr').forEach((row, index) => {
         const inputs = row.querySelectorAll('input');
         const selects = row.querySelectorAll('select');
         if (inputs.length >= 8 && selects.length >= 2) {
           currentRent.push({
+            index: index,
             room1: inputs[0].value, card1: inputs[1].value, cash1: inputs[2].value, site1: selects[0].value, time1: inputs[3].value,
             room2: inputs[4].value, card2: inputs[5].value, cash2: inputs[6].value, site2: selects[1].value, time2: inputs[7].value
           });
@@ -602,89 +610,11 @@
       });
 
       try {
-        const workTime = new Date(targetDate).setHours(0, 0, 0, 0);
-        const allDocsSnap = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
-        
-        let expectedFromPast = [];
-        allDocsSnap.forEach(docSnap => {
-          if (docSnap.id === targetDate) return;
-          const pData = docSnap.data();
-          if (pData.stay && Array.isArray(pData.stay)) {
-            pData.stay.forEach(pSt => {
-              if (pSt.checkIn && pSt.checkOut && pSt.guestName) {
-                let inT = new Date(pSt.checkIn).setHours(0,0,0,0);
-                let outT = new Date(pSt.checkOut).setHours(0,0,0,0);
-                
-                if (workTime >= inT && workTime < outT) {
-                  expectedFromPast.push({ docId: docSnap.id, data: pSt });
-                }
-              }
-            });
-          }
-        });
-
-        let pastCounts = {};
-        expectedFromPast.forEach(item => {
-          const key = `${item.data.guestName.trim()}_${item.data.checkIn}_${item.data.checkOut}`;
-          if (!pastCounts[key]) pastCounts[key] = [];
-          pastCounts[key].push(item);
-        });
-
-        let docsToUpdate = {};
-        
-        for (let key in pastCounts) {
-          let pastItems = pastCounts[key];
-          let currentNum = currentCounts[key] || 0;
-          let pastNum = pastItems.length;
-
-          if (currentNum < pastNum) {
-            let deleteCount = pastNum - currentNum;
-            
-            for (let i = 0; i < deleteCount; i++) {
-              let itemToDelete = pastItems[i];
-              if (!docsToUpdate[itemToDelete.docId]) {
-                let docData = allDocsSnap.docs.find(d => d.id === itemToDelete.docId).data();
-                docsToUpdate[itemToDelete.docId] = docData.stay || [];
-              }
-              
-              let stArray = docsToUpdate[itemToDelete.docId];
-              let idxToRemove = stArray.findIndex(s => 
-                s.guestName.trim() === itemToDelete.data.guestName.trim() && 
-                s.checkIn === itemToDelete.data.checkIn && 
-                s.checkOut === itemToDelete.data.checkOut
-              );
-              
-              if (idxToRemove !== -1) {
-                stArray.splice(idxToRemove, 1);
-              }
-            }
-          }
-        }
-
-        const deletePromises = [];
-        const allDocsList = allDocsSnap.docs;
-        for (let docId in docsToUpdate) {
-          let docData = allDocsList.find(d => d.id === docId).data();
-          deletePromises.push(
-            window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", docId), {
-              ...docData,
-              stay: docsToUpdate[docId],
-              updatedAt: new Date().toISOString()
-            })
-          );
-        }
-
-        if (deletePromises.length > 0) {
-          await Promise.all(deletePromises);
-          console.log("취소된 방 연쇄 삭제 완료 (개수 기반 매칭)");
-        }
-
         await window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", targetDate), {
           stay: currentStay,
           rent: currentRent,
           updatedAt: new Date().toISOString()
         });
-
       } catch (err) {
         console.error("저장 실패:", err);
         alert('저장 중 오류가 발생했습니다.');
@@ -718,19 +648,25 @@
       const workTime = getMidnightTime(targetDate);
 
       try {
-        // 1. 타겟 날짜에 직접 저장된 데이터 먼저 완벽히 복구
+        // 1. 타겟 날짜에 직접 저장된 데이터 복구
         const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data.stay && Array.isArray(data.stay)) {
             data.stay.forEach((res, idx) => {
               let targetRow = null;
-              const expectedIndex = res.rowIndex !== undefined ? res.rowIndex : idx;
-              
-              if (rows[expectedIndex] && !rows[expectedIndex].querySelector('.guest-name').value) {
-                targetRow = rows[expectedIndex];
-              } else if (res.catKey) {
-                targetRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
+              // UID가 일치하는 행 먼저 찾기
+              if (res.uid) {
+                targetRow = Array.from(rows).find(r => r.getAttribute('data-uid') === res.uid);
+              }
+              // 없으면 기존 인덱스나 카테고리 활용
+              if (!targetRow || targetRow.querySelector('.guest-name').value) {
+                const expectedIndex = res.rowIndex !== undefined ? res.rowIndex : idx;
+                if (rows[expectedIndex] && !rows[expectedIndex].querySelector('.guest-name').value) {
+                  targetRow = rows[expectedIndex];
+                } else if (res.catKey) {
+                  targetRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
+                }
               }
               if (!targetRow) {
                 targetRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
@@ -754,9 +690,10 @@
 
           if (data.rent && Array.isArray(data.rent)) {
             data.rent.forEach((item, idx) => {
-              if (rentRows[idx]) {
-                const inputs = rentRows[idx].querySelectorAll('input');
-                const selects = rentRows[idx].querySelectorAll('select');
+              const targetIdx = item.index !== undefined ? item.index : idx;
+              if (rentRows[targetIdx]) {
+                const inputs = rentRows[targetIdx].querySelectorAll('input');
+                const selects = rentRows[targetIdx].querySelectorAll('select');
                 inputs[0].value = item.room1 || ''; inputs[1].value = item.card1 || ''; inputs[2].value = item.cash1 || ''; selects[0].value = item.site1 || ''; inputs[3].value = item.time1 || ':';
                 inputs[4].value = item.room2 || ''; inputs[5].value = item.card2 || ''; inputs[6].value = item.cash2 || ''; selects[1].value = item.site2 || ''; inputs[7].value = item.time2 || ':';
               }
@@ -764,7 +701,7 @@
           }
         }
 
-        // 2. 다른 날짜에서 이어지는 "재숙" 데이터를 가져와 매칭 (카운트 기반 매칭)
+        // 2. 다른 날짜에서 이어지는 "재숙" 데이터를 가져와 안전하게 매칭
         let pastRestays = [];
         const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         querySnapshot.forEach((docSnap) => {
@@ -783,12 +720,11 @@
           }
         });
 
-        let matchedRows = new Set(); // 화면에 이미 배정된 재숙 객실 추적
+        let matchedRows = new Set();
 
         pastRestays.forEach(pSt => {
           let foundIdx = -1;
           
-          // 먼저 화면에 해당 이름과 날짜가 채워져 있는지 1:1로 매칭
           for (let i = 0; i < rows.length; i++) {
             if (matchedRows.has(i)) continue;
             let r = rows[i];
@@ -803,13 +739,11 @@
           }
 
           if (foundIdx !== -1) {
-            // 이미 타겟날짜 문서로 불러와져 있다면 시각적 스타일(재숙)만 씌움
             matchedRows.add(foundIdx);
             let tr = rows[foundIdx];
             tr.querySelector('.room-type').value = '재숙';
             tr.classList.add('restay-row');
           } else {
-            // 화면에 부족하다면 빈 칸을 찾아서 추가로 채워줌 (동명이인/여러 방)
             let targetIdx = -1;
             
             if (pSt.rowIndex !== undefined && pSt.rowIndex >= 0 && pSt.rowIndex < rows.length && !rows[pSt.rowIndex].querySelector('.guest-name').value) {
