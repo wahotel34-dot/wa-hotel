@@ -275,7 +275,6 @@
       buildRentTable();
       loadDataForDate(currentLoadingDate);
 
-      // 날짜 변경 전 현재 입력 중인 내용 자동 저장 보완
       dateInput.addEventListener('change', async (e) => {
         const oldDate = currentLoadingDate;
         if (oldDate) {
@@ -285,10 +284,8 @@
         await loadDataForDate(currentLoadingDate);
       });
 
-      // 브라우저 닫거나 새로고침 시 자동 저장
       window.addEventListener('beforeunload', () => {
         if (currentLoadingDate) {
-          // 비동기 처리가 완전히 보장되지는 않으나 시도
           saveDataForDate(currentLoadingDate);
         }
       });
@@ -364,7 +361,6 @@
         html += `<tr class="section-header" data-cat-key="${cat.categoryKey}"><td colspan="15">${cat.name}</td></tr>`;
         for (let i = 0; i < cat.count; i++) {
           let currentNo = cat.start + i;
-          // 각 행마다 고유 ID(UUID 형태 또는 인덱스 기반 키) 부여하여 데이터 정합성 강화
           html += `
             <tr data-row="${currentNo}" data-cat-key="${cat.categoryKey}" data-uid="${cat.categoryKey}_${currentNo}">
               <td>${currentNo}</td>
@@ -655,11 +651,9 @@
           if (data.stay && Array.isArray(data.stay)) {
             data.stay.forEach((res, idx) => {
               let targetRow = null;
-              // UID가 일치하는 행 먼저 찾기
               if (res.uid) {
                 targetRow = Array.from(rows).find(r => r.getAttribute('data-uid') === res.uid);
               }
-              // 없으면 기존 인덱스나 카테고리 활용
               if (!targetRow || targetRow.querySelector('.guest-name').value) {
                 const expectedIndex = res.rowIndex !== undefined ? res.rowIndex : idx;
                 if (rows[expectedIndex] && !rows[expectedIndex].querySelector('.guest-name').value) {
@@ -701,8 +695,8 @@
           }
         }
 
-        // 2. 다른 날짜에서 이어지는 "재숙" 데이터를 가져와 안전하게 매칭
-        let pastRestays = [];
+        // 2. 다른 날짜에서 이어지는 "재숙" 데이터를 가져와 고유값 기준으로 중복 없이 매칭
+        let pastRestaysMap = new Map();
         const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         querySnapshot.forEach((docSnap) => {
           if (docSnap.id === targetDate) return;
@@ -713,7 +707,9 @@
                 let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
                 if (workTime > inT && workTime < outT) {
-                  pastRestays.push(res);
+                  // 동일한 예약은 유일한 키(이름+체크인+체크아웃)로 1개만 유지
+                  let uniqueKey = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}`;
+                  pastRestaysMap.set(uniqueKey, res);
                 }
               }
             });
@@ -722,7 +718,7 @@
 
         let matchedRows = new Set();
 
-        pastRestays.forEach(pSt => {
+        pastRestaysMap.forEach((pSt) => {
           let foundIdx = -1;
           
           for (let i = 0; i < rows.length; i++) {
