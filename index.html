@@ -572,6 +572,9 @@
 
         if (!guestNameVal) return; 
 
+        // 당일에 직접 체크인한 예약이 아닌 경우(재숙 행)는 해당 날짜 문서에 통째로 저장하지 않음 (체크인 날짜 문서에만 본 데이터가 저장되도록 분리)
+        if (checkInVal && checkInVal !== targetDate) return;
+
         currentStay.push({
           uid: row.getAttribute('data-uid') || `row_${index}`,
           rowIndex: index,
@@ -695,7 +698,7 @@
           }
         }
 
-        // 2. 다른 날짜에서 이어지는 "재숙" 데이터를 가져와 고유값 기준으로 중복 없이 매칭
+        // 2. 다른 날짜(체크인 날짜 등)에 저장된 데이터 중 오늘이 숙박 기간(재숙)에 포함되는 항목들을 안전하게 가져옴
         let pastRestaysMap = new Map();
         const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
         querySnapshot.forEach((docSnap) => {
@@ -706,8 +709,8 @@
               if (res.checkIn && res.checkOut && res.guestName) {
                 let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
                 let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
+                // 오늘이 체크인일과 체크아웃일 사이에 끼어 있는 경우만 재숙 대상
                 if (workTime > inT && workTime < outT) {
-                  // 동일한 예약은 유일한 키(이름+체크인+체크아웃)로 1개만 유지
                   let uniqueKey = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}`;
                   pastRestaysMap.set(uniqueKey, res);
                 }
@@ -718,31 +721,34 @@
 
         let matchedRows = new Set();
 
-        pastRestaysMap.forEach((pSt) => {
-          let foundIdx = -1;
-          
-          for (let i = 0; i < rows.length; i++) {
-            if (matchedRows.has(i)) continue;
-            let r = rows[i];
-            let nameMatch = r.querySelector('.guest-name')?.value.trim() === pSt.guestName.trim();
-            let inMatch = r.querySelector('.check-in')?.value === pSt.checkIn;
-            let outMatch = r.querySelector('.check-out')?.value === pSt.checkOut;
-            
-            if (nameMatch && inMatch && outMatch) {
-              foundIdx = i;
-              break;
+        // 이미 화면에 채워진 행(직접 저장된 데이터 등)을 먼저 매칭 완료 상태로 등록
+        rows.forEach((r, idx) => {
+          let gName = r.querySelector('.guest-name')?.value.trim();
+          let cIn = r.querySelector('.check-in')?.value;
+          let cOut = r.querySelector('.check-out')?.value;
+          if (gName && cIn && cOut) {
+            let k = `${gName}_${cIn}_${cOut}`;
+            if (pastRestaysMap.has(k)) {
+              matchedRows.add(idx);
+              if (workTime > new Date(cIn).setHours(0,0,0,0) && workTime < new Date(cOut).setHours(0,0,0,0)) {
+                r.querySelector('.room-type').value = '재숙';
+                r.classList.add('restay-row');
+              }
             }
           }
+        });
 
-          if (foundIdx !== -1) {
-            matchedRows.add(foundIdx);
-            let tr = rows[foundIdx];
-            tr.querySelector('.room-type').value = '재숙';
-            tr.classList.add('restay-row');
-          } else {
+        // 아직 화면에 나타나지 않은 재숙 항목들을 빈 행에 정확히 1개씩만 채움
+        pastRestaysMap.forEach((pSt, uniqueKey) => {
+          let alreadyExists = Array.from(rows).some(r => {
+            return r.querySelector('.guest-name')?.value.trim() === pSt.guestName.trim() &&
+                   r.querySelector('.check-in')?.value === pSt.checkIn &&
+                   r.querySelector('.check-out')?.value === pSt.checkOut;
+          });
+
+          if (!alreadyExists) {
             let targetIdx = -1;
-            
-            if (pSt.rowIndex !== undefined && pSt.rowIndex >= 0 && pSt.rowIndex < rows.length && !rows[pSt.rowIndex].querySelector('.guest-name').value) {
+            if (pSt.rowIndex !== undefined && pSt.rowIndex >= 0 && pSt.rowIndex < rows.length && !rows[pSt.rowIndex].querySelector('.guest-name').value && !matchedRows.has(pSt.rowIndex)) {
               targetIdx = pSt.rowIndex;
             }
             if (targetIdx === -1 && pSt.catKey) {
