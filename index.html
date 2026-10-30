@@ -562,19 +562,24 @@
       const db = window.FB_DB;
       if (!db) return;
 
-      const currentStay = [];
       const stayRows = document.querySelectorAll('#stay-table-1 tbody tr:not(.section-header), #stay-table-2 tbody tr:not(.section-header)');
       
+      // 체크인 날짜별로 예약을 분류해서 담음 (원본 체크인 문서에 각각 저장하기 위함)
+      let checkInGroups = {};
+
       stayRows.forEach((row, index) => {
         const guestNameVal = row.querySelector('.guest-name')?.value.trim();
         const checkInVal = row.querySelector('.check-in')?.value || '';
         const checkOutVal = row.querySelector('.check-out')?.value || '';
 
-        if (!guestNameVal) return; 
+        if (!guestNameVal || !checkInVal) return; 
 
-        if (checkInVal && checkInVal !== targetDate) return;
+        // 현재 화면의 날짜가 체크인 날짜이거나 혹은 재숙 행이더라도 사용자가 수정했을 수 있으므로 체크인 일자별로 그룹화
+        if (!checkInGroups[checkInVal]) {
+          checkInGroups[checkInVal] = [];
+        }
 
-        currentStay.push({
+        checkInGroups[checkInVal].push({
           uid: row.getAttribute('data-uid') || `row_${index}`,
           rowIndex: index,
           catKey: row.getAttribute('data-cat-key') || '',
@@ -608,38 +613,72 @@
       });
 
       try {
-        // 1. 현재 저장하려는 날짜 데이터 업데이트
-        await window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", targetDate), {
-          stay: currentStay,
-          rent: currentRent,
-          updatedAt: new Date().toISOString()
-        });
-
-        // 2. 만약 첫날(체크인 날짜)을 수정하거나 지웠을 때, 다른 모든 날짜 문서에 남아 있는 유령 재숙 데이터를 청소
         const allDocsSnap = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
-        const activeCheckIns = new Set(currentStay.map(s => `${s.guestName}_${s.checkIn}_${s.checkOut}`));
+        
+        // 1. 각 체크인 날짜 문서들에 해당 예약 데이터를 안전하게 반영
+        let batchPromises = [];
+        
+        // 현재 targetDate 문서 업데이트 (대실 정보 포함)
+        let targetStayData = checkInGroups[targetDate] || [];
+        batchPromises.push(
+          window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", targetDate), {
+            stay: targetStayData,
+            rent: currentRent,
+            updatedAt: new Date().toISOString()
+          })
+        );
 
-        const cleanupPromises = [];
-        allDocsSnap.forEach(docSnap => {
-          if (docSnap.id === targetDate) return;
-          const pData = docSnap.data();
+        // 다른 날짜가 체크인인 예약들도 각 원본 체크인 문서에 반영
+        for (let cDate in checkInGroups) {
+          if (cDate === targetDate) continue;
+          let docRef = window.FB_Doc(db, "hotel_logs", cDate);
+          let existingSnap = await window.FB_GetDoc(docRef);
+          let existingRent = existingSnap.exists() ? (existingSnap.data().rent || []) : [];
+          
+          batchPromises.push(
+            window.FB_SetDoc(docRef, {
+              stay: checkInGroups[cDate],
+              rent: existingRent,
+              updatedAt: new Date().toISOString()
+            }, { merge: true })
+          );
+        }
+
+        await Promise.all(batchPromises);
+
+        // 2. 전체 문서를 순회하며 화면에서 지워진(취소된) 예약들은 모든 문서에서 완전히 제거
+        const freshDocsSnap = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
+        let allActiveKeys = new Set();
+        for (let cDate in checkInGroups) {
+          checkInGroups[cDate].forEach(s => {
+            allActiveKeys.add(`${s.guestName}_${s.checkIn}_${s.checkOut}`);
+          });
+        }
+
+        let cleanupPromises = [];
+        freshDocsSnap.forEach(docSnap => {
+          let pData = docSnap.data();
           if (pData.stay && Array.isArray(pData.stay)) {
-            // 현재 화면의 체크인 목록에 더 이상 존재하지 않는 연박 건 필터링
-            const filteredStay = pData.stay.filter(st => {
-              // 만약 이 문서의 날짜가 해당 예약의 체크인 날짜라면 유지하되, 만약 화면(체크인날짜)에서 지워졌다면 삭제 대상
+            let filteredStay = pData.stay.filter(st => {
+              let key = `${st.guestName}_${st.checkIn}_${st.checkOut}`;
+              // 만약 이 문서가 해당 예약의 체크인 날짜 문서인데 현재 활성화된 목록에 없으면 삭제 대상
               if (st.checkIn === docSnap.id) {
-                return activeCheckIns.has(`${st.guestName}_${st.checkIn}_${st.checkOut}`);
+                return allActiveKeys.has(key);
+              }
+              // 다른 날짜에 잘못 들어간 유령 데이터도 제거
+              if (!allActiveKeys.has(key) && docSnap.id !== st.checkIn) {
+                return false;
               }
               return true;
             });
 
-            if (filteredStay.length !== pData.stay.length) {
+            if (filteredStay.length !== pData.stay.length || (docSnap.id === targetDate && filteredStay.length === 0 && targetStayData.length === 0)) {
               cleanupPromises.push(
                 window.FB_SetDoc(window.FB_Doc(db, "hotel_logs", docSnap.id), {
                   ...pData,
                   stay: filteredStay,
                   updatedAt: new Date().toISOString()
-                })
+                }, { merge: true })
               );
             }
           }
@@ -668,8 +707,9 @@
         row.classList.remove('restay-row');
       });
 
-      const rentRows = document.querySelectorAll('#rent-tbody tr');
-      rentRows.forEach(row => {
+      const rentRows = document.querySelectorAll('#rent-tbody');
+      const rentTrs = document.querySelectorAll('#rent-tbody tr');
+      rentTrs.forEach(row => {
         row.querySelectorAll('input').forEach(input => input.value = input.classList.contains('rent-time') ? ':' : '');
         row.querySelectorAll('select').forEach(select => select.value = '');
       });
@@ -682,49 +722,44 @@
       const workTime = getMidnightTime(targetDate);
 
       try {
-        const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.stay && Array.isArray(data.stay)) {
-            data.stay.forEach((res, idx) => {
-              let targetRow = null;
-              if (res.uid) {
-                targetRow = Array.from(rows).find(r => r.getAttribute('data-uid') === res.uid);
-              }
-              if (!targetRow || targetRow.querySelector('.guest-name').value) {
-                const expectedIndex = res.rowIndex !== undefined ? res.rowIndex : idx;
-                if (rows[expectedIndex] && !rows[expectedIndex].querySelector('.guest-name').value) {
-                  targetRow = rows[expectedIndex];
-                } else if (res.catKey) {
-                  targetRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === res.catKey && !r.querySelector('.guest-name').value);
+        // 1. 타겟 날짜 및 다른 날짜들에 분산된 관련 데이터 전부 수집 (체크인 일치 또는 오늘이 기간 내 포함)
+        let allValidStays = [];
+        const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
+        
+        querySnapshot.forEach((docSnap) => {
+          const pData = docSnap.data();
+          if (pData.stay && Array.isArray(pData.stay)) {
+            pData.stay.forEach((res) => {
+              if (res.checkIn && res.checkOut && res.guestName) {
+                let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
+                let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
+                
+                // 오늘이 체크인 당일이거나 재숙 기간에 포함되는 경우 모두 수집
+                if (workTime === inT || (workTime > inT && workTime < outT)) {
+                  allValidStays.push(res);
                 }
-              }
-              if (!targetRow) {
-                targetRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value);
-              }
-
-              if (targetRow) {
-                targetRow.querySelector('.room-no').value = res.roomNo || '';
-                targetRow.querySelector('.guest-name').value = res.guestName || '';
-                targetRow.querySelector('.check-in').value = res.checkIn || '';
-                targetRow.querySelector('.check-out').value = res.checkOut || '';
-                targetRow.querySelector('.price').value = res.price || '';
-                targetRow.querySelector('.cash').value = res.cash || '';
-                targetRow.querySelector('.card').value = res.card || '';
-                targetRow.querySelector('.bank').value = res.bank || '';
-                targetRow.querySelector('.site').value = res.site || '';
-                targetRow.querySelector('.note').value = res.note || '';
-                targetRow.querySelector('.car').value = res.car || '';
               }
             });
           }
+        });
 
+        // 중복 제거를 위한 Map (이름+체크인+체크아웃 기준 고유화)
+        let uniqueStaysMap = new Map();
+        allValidStays.forEach(res => {
+          let key = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}`;
+          uniqueStaysMap.set(key, res);
+        });
+
+        // 타겟 날짜 문서에서 대실 정보 불러오기
+        const docSnap = await window.FB_GetDoc(window.FB_Doc(db, "hotel_logs", targetDate));
+        if (docSnap.exists()) {
+          const data = docSnap.data();
           if (data.rent && Array.isArray(data.rent)) {
             data.rent.forEach((item, idx) => {
               const targetIdx = item.index !== undefined ? item.index : idx;
-              if (rentRows[targetIdx]) {
-                const inputs = rentRows[targetIdx].querySelectorAll('input');
-                const selects = rentRows[targetIdx].querySelectorAll('select');
+              if (rentTrs[targetIdx]) {
+                const inputs = rentTrs[targetIdx].querySelectorAll('input');
+                const selects = rentTrs[targetIdx].querySelectorAll('select');
                 inputs[0].value = item.room1 || ''; inputs[1].value = item.card1 || ''; inputs[2].value = item.cash1 || ''; selects[0].value = item.site1 || ''; inputs[3].value = item.time1 || ':';
                 inputs[4].value = item.room2 || ''; inputs[5].value = item.card2 || ''; inputs[6].value = item.cash2 || ''; selects[1].value = item.site2 || ''; inputs[7].value = item.time2 || ':';
               }
@@ -732,72 +767,53 @@
           }
         }
 
-        let pastRestaysMap = new Map();
-        const querySnapshot = await window.FB_GetDocs(window.FB_Collection(db, "hotel_logs"));
-        querySnapshot.forEach((docSnap) => {
-          if (docSnap.id === targetDate) return;
-          const pData = docSnap.data();
-          if (pData.stay && Array.isArray(pData.stay)) {
-            pData.stay.forEach((res) => {
-              if (res.checkIn && res.checkOut && res.guestName) {
-                let inT = new Date(res.checkIn).setHours(0, 0, 0, 0);
-                let outT = new Date(res.checkOut).setHours(0, 0, 0, 0);
-                if (workTime > inT && workTime < outT) {
-                  let uniqueKey = `${res.guestName.trim()}_${res.checkIn}_${res.checkOut}`;
-                  pastRestaysMap.set(uniqueKey, res);
-                }
-              }
-            });
-          }
-        });
-
         let matchedRows = new Set();
 
-        rows.forEach((r, idx) => {
-          let gName = r.querySelector('.guest-name')?.value.trim();
-          let cIn = r.querySelector('.check-in')?.value;
-          let cOut = r.querySelector('.check-out')?.value;
-          if (gName && cIn && cOut) {
-            let k = `${gName}_${cIn}_${cOut}`;
-            if (pastRestaysMap.has(k)) {
-              matchedRows.add(idx);
-              if (workTime > new Date(cIn).setHours(0,0,0,0) && workTime < new Date(cOut).setHours(0,0,0,0)) {
-                r.querySelector('.room-type').value = '재숙';
-                r.classList.add('restay-row');
-              }
-            }
+        uniqueStaysMap.forEach((pSt) => {
+          let targetRow = null;
+          
+          // 1. UID가 일치하는 행 먼저 탐색
+          if (pSt.uid) {
+            targetRow = Array.from(rows).find(r => r.getAttribute('data-uid') === pSt.uid && !matchedRows.has(Array.from(rows).indexOf(r)));
           }
-        });
+          // 2. 원래 저장되었던 rowIndex 탐색
+          if (!targetRow && pSt.rowIndex !== undefined && rows[pSt.rowIndex] && !rows[pSt.rowIndex].querySelector('.guest-name').value) {
+            targetRow = rows[pSt.rowIndex];
+          }
+          // 3. 카테고리 키 일치하는 빈 행 탐색
+          if (!targetRow && pSt.catKey) {
+            targetRow = Array.from(rows).find(r => r.getAttribute('data-cat-key') === pSt.catKey && !r.querySelector('.guest-name').value && !matchedRows.has(Array.from(rows).indexOf(r)));
+          }
+          // 4. 아무 빈 행이나 탐색
+          if (!targetRow) {
+            targetRow = Array.from(rows).find(r => !r.querySelector('.guest-name').value && !matchedRows.has(Array.from(rows).indexOf(r)));
+          }
 
-        pastRestaysMap.forEach((pSt, uniqueKey) => {
-          let alreadyExists = Array.from(rows).some(r => {
-            return r.querySelector('.guest-name')?.value.trim() === pSt.guestName.trim() &&
-                   r.querySelector('.check-in')?.value === pSt.checkIn &&
-                   r.querySelector('.check-out')?.value === pSt.checkOut;
-          });
+          if (targetRow) {
+            let rIdx = Array.from(rows).indexOf(targetRow);
+            matchedRows.add(rIdx);
 
-          if (!alreadyExists) {
-            let targetIdx = -1;
-            if (pSt.rowIndex !== undefined && pSt.rowIndex >= 0 && pSt.rowIndex < rows.length && !rows[pSt.rowIndex].querySelector('.guest-name').value && !matchedRows.has(pSt.rowIndex)) {
-              targetIdx = pSt.rowIndex;
-            }
-            if (targetIdx === -1 && pSt.catKey) {
-              targetIdx = Array.from(rows).findIndex((r, i) => !matchedRows.has(i) && !r.querySelector('.guest-name').value && r.getAttribute('data-cat-key') === pSt.catKey);
-            }
-            if (targetIdx === -1) {
-              targetIdx = Array.from(rows).findIndex((r, i) => !matchedRows.has(i) && !r.querySelector('.guest-name').value);
-            }
-
-            if (targetIdx !== -1) {
-              matchedRows.add(targetIdx);
-              let targetRow = rows[targetIdx];
-              targetRow.querySelector('.room-no').value = pSt.roomNo || '';
-              targetRow.querySelector('.guest-name').value = pSt.guestName || '';
-              targetRow.querySelector('.check-in').value = pSt.checkIn || '';
-              targetRow.querySelector('.check-out').value = pSt.checkOut || '';
+            targetRow.querySelector('.room-no').value = pSt.roomNo || '';
+            targetRow.querySelector('.guest-name').value = pSt.guestName || '';
+            targetRow.querySelector('.check-in').value = pSt.checkIn || '';
+            targetRow.querySelector('.check-out').value = pSt.checkOut || '';
+            
+            let inT = new Date(pSt.checkIn).setHours(0,0,0,0);
+            if (workTime > inT) {
               targetRow.querySelector('.room-type').value = '재숙';
               targetRow.classList.add('restay-row');
+            } else {
+              targetRow.querySelector('.room-type').value = '';
+              targetRow.classList.remove('restay-row');
             }
+
+            targetRow.querySelector('.price').value = pSt.price || '';
+            targetRow.querySelector('.cash').value = pSt.cash || '';
+            targetRow.querySelector('.card').value = pSt.card || '';
+            targetRow.querySelector('.bank').value = pSt.bank || '';
+            targetRow.querySelector('.site').value = pSt.site || '';
+            targetRow.querySelector('.note').value = pSt.note || '';
+            targetRow.querySelector('.car').value = pSt.car || '';
           }
         });
 
